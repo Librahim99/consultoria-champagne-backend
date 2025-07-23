@@ -9,6 +9,13 @@ const incidentsRoutes = require('../routes/incidents');
 const assistancesRoutes = require('../routes/assistances');
 const pendingRouter = require('../routes/pending');
 
+app.use((req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  next();
+});
+
 dotenv.config();
 
 const app = express();
