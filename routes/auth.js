@@ -7,16 +7,19 @@ const { ranks } = require('../utils/enums');
 
 // Registro
 router.post('/register', async (req, res) => {
-  const { username, password } = req.body;
+  const { username, password, rank } = req.body;
 
   try {
+    if (!Object.values(ranks).includes(rank)) {
+      return res.status(400).json({ message: 'Rango inválido' });
+    }
     const existingUser = await User.findOne({ username });
     if (existingUser) {
       return res.status(400).json({ message: 'El usuario ya existe' });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const user = new User({ username, password: hashedPassword, rank: ranks.GUEST });
+    const user = new User({ username, password: hashedPassword, rank });
     await user.save();
 
     const token = jwt.sign({ id: user._id, username: user.username, rank: user.rank }, process.env.JWT_SECRET, {
