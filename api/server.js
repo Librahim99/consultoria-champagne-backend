@@ -2,12 +2,12 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const dotenv = require('dotenv');
-const authRoutes = require('./routes/auth');
-const usersRoutes = require('./routes/users');
-const clientsRoutes = require('./routes/clients');
-const incidentsRoutes = require('./routes/incidents');
-const assistancesRoutes = require('./routes/assistances');
-const pendingRouter = require('./routes/pending');
+const authRoutes = require('../routes/auth');
+const usersRoutes = require('../routes/users');
+const clientsRoutes = require('../routes/clients');
+const incidentsRoutes = require('../routes/incidents');
+const assistancesRoutes = require('../routes/assistances');
+const pendingRouter = require('../routes/pending');
 
 dotenv.config();
 
