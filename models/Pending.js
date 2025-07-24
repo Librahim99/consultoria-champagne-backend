@@ -11,7 +11,7 @@ const pendingSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   assignedUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   completionDate: { type: Date },
-  sequenceNumber: { type: Number, required: true }, // Campo requerido, generado en el backend
+  sequenceNumber: { type: Number, required: true }, // Nuevo campo
 });
 
 module.exports = mongoose.model('Pending', pendingSchema);

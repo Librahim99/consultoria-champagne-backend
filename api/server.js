@@ -9,6 +9,8 @@ const incidentsRoutes = require('../routes/incidents');
 const assistancesRoutes = require('../routes/assistances');
 const pendingRouter = require('../routes/pending');
 
+
+
 dotenv.config();
 
 const app = express();
@@ -21,6 +23,14 @@ mongoose.connect(process.env.MONGODB_URI, {
   useUnifiedTopology: true
 }).then(() => console.log('Conectado a MongoDB'))
   .catch(err => console.error('Error al conectar a MongoDB:', err));
+
+
+  app.use((req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  next();
+});
 
 app.use('/api/auth', authRoutes);
 app.use('/api/users', usersRoutes);

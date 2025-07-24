@@ -8,6 +8,7 @@ const { ranks } = require('../utils/enums');
 // Registro
 router.post('/register', async (req, res) => {
   const { username, password, rank } = req.body;
+  console.log(req.body)
 
   try {
     if (!Object.values(ranks).includes(rank)) {
