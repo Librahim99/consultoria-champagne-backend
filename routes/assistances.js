@@ -4,69 +4,90 @@ const Assistance = require('../models/Assistance');
 const authMiddleware = require('../middleware/authMiddleware');
 const { ranks } = require('../utils/enums');
 
+// 🔒 Middleware para controlar acceso total
 const totalAccessMiddleware = (req, res, next) => {
   if (req.user.rank !== ranks.TOTALACCESS) {
-    return res.status(403).json({ message: 'Acceso denegado. Requiere Acceso Total' });
+    return res.status(403).json({ message: 'Acceso denegado. Se requiere rango TOTALACCESS.' });
   }
   next();
 };
 
+// 📌 Crear nueva asistencia
 router.post('/', authMiddleware, totalAccessMiddleware, async (req, res) => {
-  const { clientId, userId, date, detail, contact, timeSpent, incidentId, pendingId } = req.body;
-
   try {
-    if (!clientId || !userId || !detail || !contact || !timeSpent) {
+    const { clientId, userId, detail, contact, timeSpent, incidentId, pendingId, date } = req.body;
+
+    if (!clientId || !userId || !detail || !contact || timeSpent == null) {
       return res.status(400).json({ message: 'Faltan campos requeridos: clientId, userId, detail, contact, timeSpent' });
     }
 
-    // Generar sequenceNumber automáticamente
-    const lastAssistance = await Assistance.findOne().sort({ sequenceNumber: -1 });
-    const sequenceNumber = lastAssistance ? lastAssistance.sequenceNumber + 1 : 1;
+    const nuevaAsistencia = new Assistance({
+      clientId,
+      userId,
+      detail,
+      contact,
+      timeSpent,
+      incidentId,
+      pendingId,
+      date
+    });
 
-    const assistance = new Assistance({ clientId, userId, date, detail, contact, timeSpent, incidentId, pendingId, sequenceNumber });
-    await assistance.save();
-    res.status(201).json(assistance);
+    await nuevaAsistencia.save();
+    res.status(201).json(nuevaAsistencia);
   } catch (error) {
-    console.error('Error al crear asistencia:', error);
-    res.status(400).json({ message: 'Error al crear asistencia', error: error.message });
+    console.error('❌ Error al crear asistencia:', error);
+    res.status(500).json({ message: 'Error interno al crear la asistencia', error: error.message });
   }
 });
 
+// 📊 Obtener todas las asistencias
 router.get('/', authMiddleware, async (req, res) => {
   try {
-    const assistances = await Assistance.find();
-    res.json(assistances);
+    const asistencias = await Assistance.find()
+      .populate('clientId', 'name common')
+      .populate('userId', 'username rank')
+      .populate('incidentId', 'subject')
+      .populate('pendingId', 'detail');
+
+    res.json(asistencias);
   } catch (error) {
+    console.error('❌ Error al obtener asistencias:', error);
     res.status(500).json({ message: 'Error al obtener asistencias', error: error.message });
   }
 });
 
+// 🛠️ Actualizar asistencia por ID
 router.put('/:id', authMiddleware, totalAccessMiddleware, async (req, res) => {
-  const { clientId, userId, date, detail, contact, timeSpent, incidentId, pendingId } = req.body;
-
   try {
-    const assistance = await Assistance.findByIdAndUpdate(
+    const asistenciaActualizada = await Assistance.findByIdAndUpdate(
       req.params.id,
-      { clientId, userId, date, detail, contact, timeSpent, incidentId, pendingId },
-      { new: true }
+      req.body,
+      { new: true, runValidators: true }
     );
-    if (!assistance) {
+
+    if (!asistenciaActualizada) {
       return res.status(404).json({ message: 'Asistencia no encontrada' });
     }
-    res.json(assistance);
+
+    res.json(asistenciaActualizada);
   } catch (error) {
+    console.error('❌ Error al actualizar asistencia:', error);
     res.status(400).json({ message: 'Error al actualizar asistencia', error: error.message });
   }
 });
 
+// 🗑️ Eliminar asistencia por ID
 router.delete('/:id', authMiddleware, totalAccessMiddleware, async (req, res) => {
   try {
-    const assistance = await Assistance.findByIdAndDelete(req.params.id);
-    if (!assistance) {
+    const asistenciaEliminada = await Assistance.findByIdAndDelete(req.params.id);
+
+    if (!asistenciaEliminada) {
       return res.status(404).json({ message: 'Asistencia no encontrada' });
     }
-    res.json({ message: 'Asistencia eliminada' });
+
+    res.json({ message: '✅ Asistencia eliminada correctamente' });
   } catch (error) {
+    console.error('❌ Error al eliminar asistencia:', error);
     res.status(500).json({ message: 'Error al eliminar asistencia', error: error.message });
   }
 });
