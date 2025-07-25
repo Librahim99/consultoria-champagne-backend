@@ -13,6 +13,11 @@ const pino = require('pino');
 const comandos = {};
 const comandosPath = path.join(__dirname, './comandos');
 
+// Variables globales para estado del bot (usadas en endpoints API)
+let botStatus = 'disconnected'; // Estado inicial
+let currentQr = null; // QR actual si desconectado
+let sockGlobal = null; // Referencia al socket para endpoints
+
 // 🚀 Cargar todos los comandos dinámicamente
 fs.readdirSync(comandosPath)
   .filter(file => file.endsWith('.js'))
@@ -27,7 +32,8 @@ comandos['!ayuda'] = comandos['!menu'];
 comandos['!inicio'] = comandos['!menu'];
 
 async function iniciarBot() {
-  const { state, saveCreds } = await useMultiFileAuthState('auth_info');
+  const authFolder = 'auth_info'; // Define la carpeta de auth para fácil limpieza
+  const { state, saveCreds } = await useMultiFileAuthState(authFolder);
   const { version } = await fetchLatestBaileysVersion();
 
   const conectar = () => {
@@ -39,24 +45,40 @@ async function iniciarBot() {
       browser: ['Bot Mantis', 'Chrome', '10.0']
     });
 
-    // 🔄 Estado de conexión
+    sockGlobal = sock; // Asigna el socket global
+
+    // 🔄 Estado de conexión con manejo de Bad MAC
     sock.ev.on('connection.update', async ({ connection, lastDisconnect, qr }) => {
-      if (qr) qrcode.generate(qr, { small: true });
+      if (qr) {
+        qrcode.generate(qr, { small: true });
+        currentQr = qr; // Actualiza QR global
+        botStatus = 'disconnected'; // Actualiza estado
+      }
 
       if (connection === 'close') {
         const code = lastDisconnect?.error?.output?.statusCode;
+        const errorMsg = lastDisconnect?.error?.toString() || '';
         console.warn('🔌 Conexión cerrada. Código:', code);
 
-        if (code !== DisconnectReason.loggedOut) {
+        if (errorMsg.includes('Bad MAC')) {
+          console.log('❌ Sesión corrupta detectada (Bad MAC). Limpiando y reconectando...');
+          fs.rmSync(authFolder, { recursive: true, force: true }); // Limpia sesión corrupta
+          conectar(); // Reconecta inmediatamente
+        } else if (code !== DisconnectReason.loggedOut) {
           console.log('🔁 Reintentando conexión en 3s...');
-          setTimeout(conectar, 3000); // retry limpio
+          setTimeout(conectar, 3000);
         } else {
           console.log('📴 Sesión cerrada. Escaneá el QR para reconectar.');
+          conectar(); // Reconecta automáticamente después de logout para generar QR nuevo
         }
+        botStatus = 'disconnected'; // Actualiza estado en cierre
+        currentQr = null; // Limpia QR
       }
 
       if (connection === 'open') {
         console.log('✅ Bot conectado a WhatsApp');
+        botStatus = 'connected'; // Actualiza estado
+        currentQr = null; // Limpia QR al conectar
       }
     });
 
@@ -104,4 +126,4 @@ async function iniciarBot() {
   conectar();
 }
 
-module.exports = iniciarBot;
+module.exports = { iniciarBot, getBotStatus: () => botStatus, getCurrentQr: () => currentQr, getSockGlobal: () => sockGlobal };

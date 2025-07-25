@@ -1,6 +1,6 @@
-const model = require('../../../utils/model');
+const {model} = require('../../../utils/model');
 const Incident = model('Incident');
-const { responderOk, responderError, responderAdvertencia } = require('../../../utils/respuestas');
+const { responderOk, responderError, responderAdvertencia, MESSAGES } = require('../../../utils/respuestas');
 const { ranks, incident_status } = require('../../../utils/enums');
 
 module.exports = {
@@ -11,32 +11,38 @@ module.exports = {
   requiereAuth: true,
 
   async ejecutar({ bot, mensaje, argumentos, usuario }) {
-    const nroTicket = argumentos[0];
-    const nuevoEstado = argumentos.slice(1).join(' ').trim().toLowerCase();
+    try {
+      const rolesPermitidos = [ranks.TOTALACCESS, ranks.CONSULTORCHIEF, ranks.DEVCHIEF];
+      if (!rolesPermitidos.includes(usuario.rank)) {
+        return responderError(bot, mensaje, MESSAGES.NO_PERMISOS(usuario.rank));
+      }
 
-    const rolesPermitidos = [ranks.TOTALACCESS, ranks.CONSULTORCHIEF, ranks.DEVCHIEF];
-    if (!rolesPermitidos.includes(usuario.rank)) {
-      return responderError(bot, mensaje, '⛔ No tenés permisos para cambiar el estado de un ticket.');
+      const nroTicket = argumentos[0];
+      const nuevoEstado = argumentos.slice(1).join(' ').trim();
+      console.log(nuevoEstado)
+
+      if (!nroTicket || !nuevoEstado) {
+        return responderAdvertencia(bot, mensaje, MESSAGES.FORMATO_ESTADO_INVALIDO);
+      }
+
+      const valoresPermitidos = Object.values(incident_status);
+      if (!valoresPermitidos.includes(nuevoEstado)) {
+        return responderAdvertencia(bot, mensaje, MESSAGES.ESTADO_INVALIDO(valoresPermitidos.join(', ')));
+      }
+
+      const ticket = await Incident.findOne({ sequenceNumber: nroTicket });
+      if (!ticket) {
+        return responderError(bot, mensaje, MESSAGES.TICKET_NO_ENCONTRADO(nroTicket));
+      }
+
+      const anterior = ticket.status;
+      ticket.status = nuevoEstado;
+      await ticket.save();
+
+      await responderOk(bot, mensaje, MESSAGES.ESTADO_ACTUALIZADO(nroTicket, anterior, nuevoEstado));
+    } catch (error) {
+      console.error('❌ Error en comando !estado:', error);
+      responderError(bot, mensaje, MESSAGES.ERROR_ESTADO);
     }
-
-    if (!nroTicket || !nuevoEstado) {
-      return responderAdvertencia(bot, mensaje, '⚠️ Uso correcto: !estado <nro_ticket> <nuevo_estado>');
-    }
-
-    const valoresPermitidos = Object.values(incident_status);
-    if (!valoresPermitidos.includes(nuevoEstado)) {
-      return responderAdvertencia(bot, mensaje, `❌ Estado inválido. Usá uno de: ${valoresPermitidos.join(', ')}`);
-    }
-
-    const ticket = await Incident.findOne({ sequenceNumber: nroTicket });
-    if (!ticket) {
-      return responderError(bot, mensaje, `🚫 No se encontró el ticket N°${nroTicket}`);
-    }
-
-    const anterior = ticket.status;
-    ticket.status = nuevoEstado;
-    await ticket.save();
-
-    await responderOk(bot, mensaje, `📌 Estado del ticket N°${nroTicket} actualizado:\n*${anterior} ➜ ${nuevoEstado}*`);
   }
 };

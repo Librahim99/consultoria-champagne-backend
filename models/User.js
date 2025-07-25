@@ -22,6 +22,9 @@ const userSchema = new mongoose.Schema({
       message: 'Rango inválido: {VALUE}'
     }
   },
+  number: {
+    type: String
+  },
   entryDate: {
     type: Date,
     default: Date.now

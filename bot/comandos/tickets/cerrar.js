@@ -1,7 +1,7 @@
-const model = require('../../../utils/model');
+const {model} = require('../../../utils/model');
 const Incident = model('Incident');
 
-const { responderOk, responderError, responderAdvertencia } = require('../../../utils/respuestas');
+const { responderOk, responderError, responderAdvertencia, MESSAGES } = require('../../../utils/respuestas');
 const { ranks, incident_status } = require('../../../utils/enums');
 
 module.exports = {
@@ -23,23 +23,23 @@ module.exports = {
       ];
 
       if (!rolesPermitidos.includes(usuario.rank)) {
-        return responderError(bot, mensaje, '⛔ No tenés permisos para cerrar tickets.');
+        return responderError(bot, mensaje, MESSAGES.NO_PERMISOS(usuario.rank));
       }
 
       const [nroTicket, ...detalleArray] = argumentos;
       const detalle = detalleArray.join(' ');
 
       if (!nroTicket || !detalle) {
-        return responderAdvertencia(bot, mensaje, '❗ Formato inválido. Usá: !cerrar <nro_ticket> <detalle>');
+        return responderAdvertencia(bot, mensaje, MESSAGES.FORMATO_CERRAR_INVALIDO);
       }
 
       const incidente = await Incident.findOne({ sequenceNumber: nroTicket });
       if (!incidente) {
-        return responderError(bot, mensaje, `🔍 No se encontró el ticket N°${nroTicket}`);
+        return responderError(bot, mensaje, MESSAGES.TICKET_NO_ENCONTRADO(nroTicket));
       }
 
       if (incidente.status === incident_status.SOLVED) {
-        return responderAdvertencia(bot, mensaje, `ℹ️ El ticket N°${nroTicket} ya está cerrado.`);
+        return responderAdvertencia(bot, mensaje, MESSAGES.TICKET_YA_CERRADO(nroTicket));
       }
 
       incidente.status = incident_status.SOLVED;
@@ -47,10 +47,10 @@ module.exports = {
       incidente.completionDate = new Date();
       await incidente.save();
 
-      await responderOk(bot, mensaje, `✅ Ticket N°${nroTicket} cerrado correctamente.`);
+      await responderOk(bot, mensaje, MESSAGES.TICKET_CERRADO(nroTicket));
     } catch (error) {
       console.error('❌ Error en comando !cerrar:', error);
-      responderError(bot, mensaje, '🚨 Ocurrió un error al cerrar el ticket.');
+      responderError(bot, mensaje, MESSAGES.ERROR_CERRAR);
     }
   }
 };

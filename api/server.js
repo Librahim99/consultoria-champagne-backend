@@ -12,9 +12,10 @@ const clientsRoutes = require('../routes/clients');
 const incidentsRoutes = require('../routes/incidents');
 const assistancesRoutes = require('../routes/assistances');
 const pendingRouter = require('../routes/pending');
+const adminBotRouter = require('../routes/adminbot');
 
 // 🤖 Bot de WhatsApp
-const iniciarBot = require('../bot/index');
+const bot = require('../bot/index'); // Require del objeto exportado
 
 dotenv.config();
 
@@ -32,7 +33,7 @@ mongoose.connect(process.env.MONGODB_URI, {
 
   loginBot(); // inicia sesión y guarda token
 
-  iniciarBot(); // ← Iniciamos el bot una vez conectada la DB
+  bot.iniciarBot() // ← Iniciamos el bot una vez conectada la DB
 })
 .catch(err => console.error('❌ Error al conectar a MongoDB:', err));
 
@@ -52,6 +53,7 @@ app.use('/api/clients', clientsRoutes);
 app.use('/api/incidents', incidentsRoutes);
 app.use('/api/assistances', assistancesRoutes);
 app.use('/api/pending', pendingRouter);
+app.use('/api/bot', adminBotRouter);
 
 // 🚀 Servidor HTTP
 const PORT = process.env.PORT || 5000;
