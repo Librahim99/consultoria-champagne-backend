@@ -12,33 +12,46 @@ const totalAccessMiddleware = (req, res, next) => {
   next();
 };
 
-// Obtener todos los usuarios
+// 📥 Obtener todos los usuarios (con filtro opcional por username)
 router.get('/', authMiddleware, totalAccessMiddleware, async (req, res) => {
   try {
-    const users = await User.find().select('-password');
+    const { username } = req.query;
+    const filtro = {};
+
+    if (username) {
+      filtro.username = { $regex: new RegExp(username, 'i') };
+    }
+
+    const users = await User.find(filtro).select('-password').sort({ entryDate: -1 });
     res.json(users);
   } catch (error) {
     res.status(500).json({ message: 'Error al obtener usuarios', error: error.message });
   }
 });
 
-// Actualizar usuario
+// 🔄 Actualizar usuario
 router.put('/:id', authMiddleware, totalAccessMiddleware, async (req, res) => {
-  const { username, password, rank } = req.body;
   try {
+    const { username, password, rank } = req.body;
+
     if (rank && !Object.values(ranks).includes(rank)) {
       return res.status(400).json({ message: 'Rango inválido' });
     }
-    const updateData = { username, rank };
+
+    const updateData = {};
+    if (username) updateData.username = username;
+    if (rank) updateData.rank = rank;
     if (password) {
-      const bcrypt = require('bcryptjs');
       updateData.password = await bcrypt.hash(password, 10);
     }
+
     const user = await User.findByIdAndUpdate(req.params.id, updateData, { new: true }).select('-password');
+
     if (!user) {
       return res.status(404).json({ message: 'Usuario no encontrado' });
     }
-    res.json(user);
+
+    res.json({ message: 'Usuario actualizado correctamente', data: user });
   } catch (error) {
     res.status(400).json({ message: 'Error al actualizar usuario', error: error.message });
   }

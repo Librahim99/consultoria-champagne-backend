@@ -5,7 +5,7 @@ const incidentSchema = new mongoose.Schema({
   clientId: { type: mongoose.Schema.Types.ObjectId, ref: 'Client', required: true },
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   executiveId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  assignedUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: false, default: null },
+  assignedUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   type: { type: String, required: true, enum: Object.values(incident_types) },
   subject: { type: String, required: true },
   detail: { type: String, required: true },
@@ -17,7 +17,9 @@ const incidentSchema = new mongoose.Schema({
   status: { type: String, required: true, enum: Object.values(incident_status) },
   creationDate: { type: Date },
   completionDate: { type: Date },
-  sequenceNumber: { type: Number, required: true }, // Campo requerido, generado en el backend
+  sequenceNumber: { type: Number, required: true }
+}, {
+  timestamps: true
 });
 
 // Pre-save hook para manejar assignedUserId inválido

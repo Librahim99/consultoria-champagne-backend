@@ -1,21 +1,36 @@
 {
   "name": "backend",
   "version": "1.0.0",
-  "description": "",
+  "description": "Bot CRM para WhatsApp y backend integrado",
   "main": "index.js",
   "scripts": {
+    "dev": "nodemon index.js",
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "bot",
+    "whatsapp",
+    "crm",
+    "mantis"
+  ],
+  "author": "Thomi & Lucas",
   "license": "ISC",
   "dependencies": {
-    "bcryptjs": "^2.4.3",
+    "@whiskeysockets/baileys": "^6.7.18",
+    "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
-    "dotenv": "^16.4.5",
-    "express": "^4.18.2",
+    "json2csv": "^6.0.0-alpha.2",
     "jsonwebtoken": "^9.0.2",
-    "mongoose": "^8.7.0"
+    "dotenv": "^17.2.0",
+    "express": "^4.18.2",
+    "mongoose": "^8.7.0",
+    "pino": "^9.7.0",
+    "qrcode-terminal": "^0.12.0",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10",
+    "pino-pretty": "^13.0.0"
   }
 }
