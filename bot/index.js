@@ -1,6 +1,5 @@
 const {
   default: makeWASocket,
-  useMultiFileAuthState,
   DisconnectReason,
   fetchLatestBaileysVersion
 } = require('@whiskeysockets/baileys');
@@ -9,6 +8,8 @@ const fs = require('fs');
 const path = require('path');
 const qrcode = require('qrcode-terminal');
 const pino = require('pino');
+
+const AuthState = require('../models/AuthState'); // Path to model
 
 const comandos = {};
 const comandosPath = path.join(__dirname, './comandos');
@@ -30,22 +31,44 @@ let sock = null;
 let currentQR = null;
 let reconnectAttempts = 0;
 const maxReconnectAttempts = 5;
-const logger = pino({ level: 'info' }); // Para logs detallados
 
 async function iniciarBot(force = false) {
-  const { state, saveCreds } = await useMultiFileAuthState('custom DB');
   const { version } = await fetchLatestBaileysVersion();
+
+  // Custom DB auth state
+  const auth = {
+    creds: {},
+    keys: {},
+    async get(type, ids) {
+      const results = {};
+      for (const id of ids) {
+        const doc = await AuthState.findOne({ key: `${type}:${id}` });
+        results[id] = doc ? doc.value : null;
+      }
+      return results;
+    },
+    async set(type, data) {
+      for (const [id, value] of Object.entries(data)) {
+        await AuthState.updateOne({ key: `${type}:${id}` }, { value }, { upsert: true });
+      }
+    },
+    async clear(type, ids) {
+      for (const id of ids) {
+        await AuthState.deleteOne({ key: `${type}:${id}` });
+      }
+    }
+  };
 
   const conectar = () => {
     if (reconnectAttempts >= maxReconnectAttempts) {
-      logger.error('Máximo reconexiones alcanzado');
+      console.error('❌ Max reconexiones alcanzado, stopping retries');
       return;
     }
 
     sock = makeWASocket({
       version,
-      auth: state,
-      logger,
+      auth,
+      logger: pino({ level: 'silent' }),
       printQRInTerminal: false,
       browser: ['Bot Mantis', 'Chrome', '10.0']
     });
@@ -54,32 +77,34 @@ async function iniciarBot(force = false) {
     sock.ev.on('connection.update', async ({ connection, lastDisconnect, qr }) => {
       if (qr) {
         currentQR = qr;
-        logger.info('QR generado');
-        qrcode.generate(qr, { small: true }); // Siempre en local for test
+        qrcode.generate(qr, { small: true });
       }
 
       if (connection === 'close') {
         const code = lastDisconnect?.error?.output?.statusCode;
-        logger.warn('Conexión cerrada. Código:', code);
+        console.warn('🔌 Conexión cerrada. Código:', code);
 
         if (code !== DisconnectReason.loggedOut) {
           reconnectAttempts++;
-          const delay = Math.min(reconnectAttempts * 3000, 30000); // Backoff
-          logger.info('Reintentando conexión en ' + delay/1000 + 's...');
+          const delay = 3000 * Math.pow(2, reconnectAttempts - 1); // Exponential backoff
+          console.log('🔁 Reintentando conexión en ' + (delay / 1000) + 's... (intento ' + reconnectAttempts + ')');
           setTimeout(conectar, delay);
         } else {
-          logger.info('Sesión cerrada. Escaneá el QR para reconectar.');
+          console.log('📴 Sesión cerrada. Escaneá el QR para reconectar.');
           reconnectAttempts = 0;
         }
       }
 
       if (connection === 'open') {
-        logger.info('✅ Bot conectado a WhatsApp');
+        console.log('✅ Bot conectado a WhatsApp');
+        reconnectAttempts = 0;
       }
     });
 
     // 💾 Guardar credenciales
-    sock.ev.on('creds.update', saveCreds);
+    sock.ev.on('creds.update', () => {
+      // Custom auth handles save
+    });
 
     // 💬 Manejo de mensajes
     sock.ev.on('messages.upsert', async ({ messages }) => {
@@ -98,7 +123,7 @@ async function iniciarBot(force = false) {
       const esGrupo = numero.endsWith('@g.us');
       const remitente = esGrupo ? mensaje.key.participant : numero;
 
-      logger.info(`📨 Comando: ${comando} | De: ${remitente} (${esGrupo ? 'grupo' : 'contacto'})`);
+      console.log(`📨 Comando: ${comando} | De: ${remitente} (${esGrupo ? 'grupo' : 'contacto'})`);
 
       const ejecutar = comandos[comando];
 
@@ -106,7 +131,7 @@ async function iniciarBot(force = false) {
         try {
           await ejecutar(sock, numero, texto, remitente);
         } catch (err) {
-          logger.error(`❌ Error ejecutando "${comando}":`, err);
+          console.error(`❌ Error ejecutando "${comando}":`, err);
           await sock.sendMessage(numero, {
             text: '🚨 Error al ejecutar el comando. Revisá la sintaxis o intentá más tarde.'
           });
@@ -120,10 +145,8 @@ async function iniciarBot(force = false) {
   };
 
   if (force && sock) {
-    logger.info('Force reconnect: closing current socket');
     sock.end();
     sock = null;
-    reconnectAttempts = 0;
   }
   conectar();
 }

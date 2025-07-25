@@ -6,8 +6,6 @@ const dotenv = require('dotenv');
 const jsonwebtoken = require('jsonwebtoken'); // Para authMiddleware
 const rateLimit = require('express-rate-limit'); // Nueva para optimización
 const QRCode = require('qrcode'); // Nueva para QR dataURL
-const fs = require('fs');
-const path = require('path');
 
 // 🌐 Rutas API
 const { loginBot } = require('../bot/servicios/authService');
@@ -48,10 +46,10 @@ const authMiddleware = (req, res, next) => {
 
 // Endpoints bot nuevos
 app.get('/api/bot-qr', authMiddleware, async (req, res) => {
-  const currentQR = getCurrentQR();
-  if (!currentQR) return res.json({ qr: null, message: 'Bot conectado o no QR disponible' });
+  const qr = getCurrentQR();
+  if (!qr) return res.json({ qr: null, message: 'Bot conectado o no QR disponible' });
   try {
-    const qrImage = await QRCode.toDataURL(currentQR);
+    const qrImage = await QRCode.toDataURL(qr);
     res.json({ qr: qrImage });
   } catch (err) {
     console.error('Error generando QR:', err);
@@ -60,8 +58,7 @@ app.get('/api/bot-qr', authMiddleware, async (req, res) => {
 });
 
 app.get('/api/bot-status', authMiddleware, (req, res) => {
-  const sock = getSock();
-  const status = sock?.user ? 'conectado' : 'desconectado';
+  const status = getSock()?.user ? 'conectado' : 'desconectado';
   res.json({ status });
 });
 
@@ -71,10 +68,8 @@ app.post('/api/bot-start', authMiddleware, (req, res) => {
 });
 
 app.post('/api/bot-logout', authMiddleware, (req, res) => {
-  const authPath = path.join(__dirname, '../auth_info');
-  if (fs.existsSync(authPath)) {
-    fs.rmSync(authPath, { recursive: true, force: true });
-  }
+  // Clear DB collection for logout
+  require('../../models/AuthState').deleteMany({}).exec();
   iniciarBot(true); // Force new connection with QR
   res.json({ message: 'Logout exitoso, generando nuevo QR...' });
 });
