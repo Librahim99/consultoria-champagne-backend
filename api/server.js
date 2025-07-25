@@ -43,6 +43,8 @@ res.set('Expires', '0');
 next();
 });
 
+app.get('/ping', (req, res) => res.send('OK'));
+
 // 🔀 Rutas
 app.use('/api/auth', authRoutes);
 app.use('/api/users', usersRoutes);
