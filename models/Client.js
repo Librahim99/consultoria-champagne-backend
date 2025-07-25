@@ -15,7 +15,8 @@ const clientSchema = new mongoose.Schema({
   },
   lastUpdate: {
     type: Date,
-    default: null
+    required: [true, 'Debe indicar fecha de ultima actualización'],
+    default: Date.now
   },
   vip: {
     type: Boolean,

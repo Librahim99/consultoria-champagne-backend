@@ -16,8 +16,7 @@ const totalAccessMiddleware = (req, res, next) => {
 router.post('/', authMiddleware, totalAccessMiddleware, async (req, res) => {
   const { name, common, vip, active } = req.body;
   try {
-    const lastUpdate = new Date()
-    const client = new Client({ name, common, vip, active, lastUpdate });
+    const client = new Client({ name, common, vip, active });
     await client.save();
     res.status(201).json(client);
   } catch (error) {
