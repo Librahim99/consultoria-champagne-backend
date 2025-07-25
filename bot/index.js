@@ -26,37 +26,55 @@ fs.readdirSync(comandosPath)
 comandos['!ayuda'] = comandos['!menu'];
 comandos['!inicio'] = comandos['!menu'];
 
-async function iniciarBot() {
-  const { state, saveCreds } = await useMultiFileAuthState('auth_info');
+let sock = null;
+let currentQR = null;
+let reconnectAttempts = 0;
+const maxReconnectAttempts = 5;
+const logger = pino({ level: 'info' }); // Para logs detallados
+
+async function iniciarBot(force = false) {
+  const { state, saveCreds } = await useMultiFileAuthState('custom DB');
   const { version } = await fetchLatestBaileysVersion();
 
   const conectar = () => {
-    const sock = makeWASocket({
+    if (reconnectAttempts >= maxReconnectAttempts) {
+      logger.error('Máximo reconexiones alcanzado');
+      return;
+    }
+
+    sock = makeWASocket({
       version,
       auth: state,
-      logger: pino({ level: 'silent' }),
+      logger,
       printQRInTerminal: false,
       browser: ['Bot Mantis', 'Chrome', '10.0']
     });
 
     // 🔄 Estado de conexión
     sock.ev.on('connection.update', async ({ connection, lastDisconnect, qr }) => {
-      if (qr) qrcode.generate(qr, { small: true });
+      if (qr) {
+        currentQR = qr;
+        logger.info('QR generado');
+        qrcode.generate(qr, { small: true }); // Siempre en local for test
+      }
 
       if (connection === 'close') {
         const code = lastDisconnect?.error?.output?.statusCode;
-        console.warn('🔌 Conexión cerrada. Código:', code);
+        logger.warn('Conexión cerrada. Código:', code);
 
         if (code !== DisconnectReason.loggedOut) {
-          console.log('🔁 Reintentando conexión en 3s...');
-          setTimeout(conectar, 3000); // retry limpio
+          reconnectAttempts++;
+          const delay = Math.min(reconnectAttempts * 3000, 30000); // Backoff
+          logger.info('Reintentando conexión en ' + delay/1000 + 's...');
+          setTimeout(conectar, delay);
         } else {
-          console.log('📴 Sesión cerrada. Escaneá el QR para reconectar.');
+          logger.info('Sesión cerrada. Escaneá el QR para reconectar.');
+          reconnectAttempts = 0;
         }
       }
 
       if (connection === 'open') {
-        console.log('✅ Bot conectado a WhatsApp');
+        logger.info('✅ Bot conectado a WhatsApp');
       }
     });
 
@@ -80,7 +98,7 @@ async function iniciarBot() {
       const esGrupo = numero.endsWith('@g.us');
       const remitente = esGrupo ? mensaje.key.participant : numero;
 
-      console.log(`📨 Comando: ${comando} | De: ${remitente} (${esGrupo ? 'grupo' : 'contacto'})`);
+      logger.info(`📨 Comando: ${comando} | De: ${remitente} (${esGrupo ? 'grupo' : 'contacto'})`);
 
       const ejecutar = comandos[comando];
 
@@ -88,7 +106,7 @@ async function iniciarBot() {
         try {
           await ejecutar(sock, numero, texto, remitente);
         } catch (err) {
-          console.error(`❌ Error ejecutando "${comando}":`, err);
+          logger.error(`❌ Error ejecutando "${comando}":`, err);
           await sock.sendMessage(numero, {
             text: '🚨 Error al ejecutar el comando. Revisá la sintaxis o intentá más tarde.'
           });
@@ -101,7 +119,17 @@ async function iniciarBot() {
     });
   };
 
+  if (force && sock) {
+    logger.info('Force reconnect: closing current socket');
+    sock.end();
+    sock = null;
+    reconnectAttempts = 0;
+  }
   conectar();
 }
 
-module.exports = iniciarBot;
+module.exports = {
+  iniciarBot,
+  getSock: () => sock,
+  getCurrentQR: () => currentQR
+};

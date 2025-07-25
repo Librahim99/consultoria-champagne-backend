@@ -3,6 +3,11 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const dotenv = require('dotenv');
+const jsonwebtoken = require('jsonwebtoken'); // Para authMiddleware
+const rateLimit = require('express-rate-limit'); // Nueva para optimización
+const QRCode = require('qrcode'); // Nueva para QR dataURL
+const fs = require('fs');
+const path = require('path');
 
 // 🌐 Rutas API
 const { loginBot } = require('../bot/servicios/authService');
@@ -14,13 +19,65 @@ const assistancesRoutes = require('../routes/assistances');
 const pendingRouter = require('../routes/pending');
 
 // 🤖 Bot de WhatsApp
-const iniciarBot = require('../bot/index');
+const { iniciarBot, getSock, getCurrentQR } = require('../bot/index');
 
 dotenv.config();
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// Rate-limit para endpoints bot (optimización seguridad/escalabilidad)
+const botLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 min
+  max: 50 // Max requests
+});
+app.use('/api/bot-', botLimiter);
+
+// Middleware auth JWT (básico; reemplaza si tienes middleware/auth.js)
+const authMiddleware = (req, res, next) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) return res.status(401).json({ error: 'No autorizado' });
+  try {
+    jsonwebtoken.verify(token, process.env.JWT_SECRET);
+    next();
+  } catch (err) {
+    res.status(401).json({ error: 'Token inválido' });
+  }
+};
+
+// Endpoints bot nuevos
+app.get('/api/bot-qr', authMiddleware, async (req, res) => {
+  const currentQR = getCurrentQR();
+  if (!currentQR) return res.json({ qr: null, message: 'Bot conectado o no QR disponible' });
+  try {
+    const qrImage = await QRCode.toDataURL(currentQR);
+    res.json({ qr: qrImage });
+  } catch (err) {
+    console.error('Error generando QR:', err);
+    res.status(500).json({ error: 'Error generando QR' });
+  }
+});
+
+app.get('/api/bot-status', authMiddleware, (req, res) => {
+  const sock = getSock();
+  const status = sock?.user ? 'conectado' : 'desconectado';
+  res.json({ status });
+});
+
+app.post('/api/bot-start', authMiddleware, (req, res) => {
+  iniciarBot(true); // Force reconnect
+  res.json({ message: 'Intentando prender bot...' });
+});
+
+app.post('/api/bot-logout', authMiddleware, (req, res) => {
+  const authPath = path.join(__dirname, '../auth_info');
+  if (fs.existsSync(authPath)) {
+    fs.rmSync(authPath, { recursive: true, force: true });
+  }
+  iniciarBot(true); // Force new connection with QR
+  res.json({ message: 'Logout exitoso, generando nuevo QR...' });
+});
 
 // 🔌 Conexión a MongoDB
 mongoose.connect(process.env.MONGODB_URI, {
@@ -37,10 +94,10 @@ mongoose.connect(process.env.MONGODB_URI, {
 .catch(err => console.error('❌ Error al conectar a MongoDB:', err));
 
 app.use((req, res, next) => {
-res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-res.set('Pragma', 'no-cache');
-res.set('Expires', '0');
-next();
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  next();
 });
 
 // 🔀 Rutas
