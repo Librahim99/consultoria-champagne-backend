@@ -15,7 +15,7 @@ const pendingRouter = require('../routes/pending');
 const adminBotRouter = require('../routes/adminbot');
 
 // 🤖 Bot de WhatsApp
-const bot = require('../bot/index'); // Require del objeto exportado
+const bot = require('../bot/index'); // Require del objeto exportado (inicialización automática)
 
 dotenv.config();
 
@@ -33,7 +33,7 @@ mongoose.connect(process.env.MONGODB_URI, {
 
   loginBot(); // inicia sesión y guarda token
 
-  bot.iniciarBot() // ← Iniciamos el bot una vez conectada la DB
+  // No llamar a bot.iniciarBot() ya que se ejecuta automáticamente al require
 })
 .catch(err => console.error('❌ Error al conectar a MongoDB:', err));
 

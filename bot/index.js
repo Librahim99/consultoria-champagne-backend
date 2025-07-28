@@ -1,3 +1,4 @@
+// index.js
 const {
   default: makeWASocket,
   useMultiFileAuthState,
@@ -7,7 +8,6 @@ const {
 
 const fs = require('fs');
 const path = require('path');
-const qrcode = require('qrcode-terminal');
 const pino = require('pino');
 
 const comandos = {};
@@ -17,6 +17,8 @@ const comandosPath = path.join(__dirname, './comandos');
 let botStatus = 'disconnected'; // Estado inicial
 let currentQr = null; // QR actual si desconectado
 let sockGlobal = null; // Referencia al socket para endpoints
+let qrAttempts = 0; // Contador de intentos de QR
+const maxQrAttempts = 3; // Máximo de intentos
 
 // 🚀 Cargar todos los comandos dinámicamente
 fs.readdirSync(comandosPath)
@@ -31,12 +33,17 @@ fs.readdirSync(comandosPath)
 comandos['!ayuda'] = comandos['!menu'];
 comandos['!inicio'] = comandos['!menu'];
 
-async function iniciarBot() {
+// Función de inicialización (async, pero envuelta en promesa)
+let conectar; // Declaramos conectar globalmente
+let startConnection; // Declaramos startConnection globalmente
+
+async function init() {
   const authFolder = 'auth_info'; // Define la carpeta de auth para fácil limpieza
   const { state, saveCreds } = await useMultiFileAuthState(authFolder);
   const { version } = await fetchLatestBaileysVersion();
 
-  const conectar = () => {
+  // Definimos conectar (disponible globalmente)
+  conectar = () => {
     const sock = makeWASocket({
       version,
       auth: state,
@@ -47,10 +54,19 @@ async function iniciarBot() {
 
     sockGlobal = sock; // Asigna el socket global
 
-    // 🔄 Estado de conexión con manejo de Bad MAC
+    // 🔄 Estado de conexión con manejo de Bad MAC y conteo de QR
     sock.ev.on('connection.update', async ({ connection, lastDisconnect, qr }) => {
       if (qr) {
-        qrcode.generate(qr, { small: true });
+        qrAttempts++;
+        console.log(`🔄 QR generado (intento ${qrAttempts}/${maxQrAttempts})`);
+        if (qrAttempts > maxQrAttempts) {
+          console.log('❌ Máximo de intentos de QR alcanzado. Deteniendo proceso.');
+          currentQr = null;
+          qrAttempts = 0;
+          sock.end(); // Cierra el socket para detener
+          botStatus = 'disconnected';
+          return;
+        }
         currentQr = qr; // Actualiza QR global
         botStatus = 'disconnected'; // Actualiza estado
       }
@@ -63,13 +79,15 @@ async function iniciarBot() {
         if (errorMsg.includes('Bad MAC')) {
           console.log('❌ Sesión corrupta detectada (Bad MAC). Limpiando y reconectando...');
           fs.rmSync(authFolder, { recursive: true, force: true }); // Limpia sesión corrupta
-          conectar(); // Reconecta inmediatamente
+          qrAttempts = 0; // Reset attempts
+          // No reconectar automáticamente, esperar solicitud
         } else if (code !== DisconnectReason.loggedOut) {
           console.log('🔁 Reintentando conexión en 3s...');
           setTimeout(conectar, 3000);
         } else {
-          console.log('📴 Sesión cerrada. Escaneá el QR para reconectar.');
-          conectar(); // Reconecta automáticamente después de logout para generar QR nuevo
+          console.log('📴 Sesión cerrada. Esperando solicitud para reconectar.');
+          qrAttempts = 0; // Reset attempts
+          // No reconectar automáticamente
         }
         botStatus = 'disconnected'; // Actualiza estado en cierre
         currentQr = null; // Limpia QR
@@ -79,6 +97,7 @@ async function iniciarBot() {
         console.log('✅ Bot conectado a WhatsApp');
         botStatus = 'connected'; // Actualiza estado
         currentQr = null; // Limpia QR al conectar
+        qrAttempts = 0; // Reset attempts
       }
     });
 
@@ -123,7 +142,30 @@ async function iniciarBot() {
     });
   };
 
-  conectar();
+  // Al iniciar, solo conectar si existe creds.json válido en auth_info (sesión activa real)
+  const credsPath = path.join(authFolder, 'creds.json');
+  if (fs.existsSync(credsPath)) {
+    console.log('✅ Sesión existente detectada (creds.json presente). Conectando automáticamente...');
+    conectar();
+  } else {
+    console.log('📴 No hay sesión activa válida. Esperando solicitud para iniciar conexión.');
+  }
 }
 
-module.exports = { iniciarBot, getBotStatus: () => botStatus, getCurrentQr: () => currentQr, getSockGlobal: () => sockGlobal };
+// Ejecutamos init como promesa (para manejar async)
+const initPromise = init();
+
+// Función exportada para iniciar conexión manualmente (async para awaiting init)
+startConnection = async () => {
+  await initPromise; // Espera a que la inicialización async termine si no lo ha hecho
+  qrAttempts = 0; // Reset attempts al solicitar
+  conectar();
+};
+
+// Exportamos directamente (sin wrapper)
+module.exports = { 
+  getBotStatus: () => botStatus, 
+  getCurrentQr: () => currentQr, 
+  getSockGlobal: () => sockGlobal,
+  startConnection
+};
