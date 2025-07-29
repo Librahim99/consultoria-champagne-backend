@@ -1,7 +1,6 @@
 // index.js
 const {
   default: makeWASocket,
-  useMultiFileAuthState,
   DisconnectReason,
   fetchLatestBaileysVersion
 } = require('@whiskeysockets/baileys');
@@ -10,8 +9,14 @@ const fs = require('fs');
 const path = require('path');
 const pino = require('pino');
 
+// CAMBIO: Importamos el modelo para limpieza
+const AuthState = require('../models/AuthState');
+
 const comandos = {};
 const comandosPath = path.join(__dirname, './comandos');
+
+// CAMBIO: Importamos el nuevo mongoAuthState
+const useMongoAuthState = require('./servicios/mongoAuthState');
 
 // Variables globales para estado del bot (usadas en endpoints API)
 let botStatus = 'disconnected'; // Estado inicial
@@ -38,8 +43,8 @@ let conectar; // Declaramos conectar globalmente
 let startConnection; // Declaramos startConnection globalmente
 
 async function init() {
-  const authFolder = 'auth_info'; // Define la carpeta de auth para fácil limpieza
-  const { state, saveCreds } = await useMultiFileAuthState(authFolder);
+  // CAMBIO: Usamos mongoAuthState con saveCreds
+  const { state, saveCreds } = await useMongoAuthState();
   const { version } = await fetchLatestBaileysVersion();
 
   // Definimos conectar (disponible globalmente)
@@ -76,11 +81,12 @@ async function init() {
         const errorMsg = lastDisconnect?.error?.toString() || '';
         console.warn('🔌 Conexión cerrada. Código:', code);
 
-        if (errorMsg.includes('Bad MAC')) {
-          console.log('❌ Sesión corrupta detectada (Bad MAC). Limpiando y reconectando...');
-          fs.rmSync(authFolder, { recursive: true, force: true }); // Limpia sesión corrupta
+        // CAMBIO: Limpieza de DB en Bad MAC o loggedOut y reconexión auto
+        if (errorMsg.includes('Bad MAC') || code === DisconnectReason.loggedOut) {
+          console.log('❌ Sesión corrupta o cerrada (Bad MAC/loggedOut). Limpiando DB y reconectando...');
+          await AuthState.deleteMany({}); // Limpia toda la colección
           qrAttempts = 0; // Reset attempts
-          // No reconectar automáticamente, esperar solicitud
+          setTimeout(conectar, 3000); // Reconexión automática
         } else if (code !== DisconnectReason.loggedOut) {
           console.log('🔁 Reintentando conexión en 3s...');
           setTimeout(conectar, 3000);
@@ -102,6 +108,7 @@ async function init() {
     });
 
     // 💾 Guardar credenciales
+    // CAMBIO: Usamos saveCreds
     sock.ev.on('creds.update', saveCreds);
 
     // 💬 Manejo de mensajes
@@ -142,13 +149,12 @@ async function init() {
     });
   };
 
-  // Al iniciar, solo conectar si existe creds.json válido en auth_info (sesión activa real)
-  const credsPath = path.join(authFolder, 'creds.json');
-  if (fs.existsSync(credsPath)) {
-    console.log('✅ Sesión existente detectada (creds.json presente). Conectando automáticamente...');
+  // CAMBIO: Chequeo inicial: Si hay creds en DB, conectar auto
+  if (state.creds && state.creds.me) {
+    console.log('✅ Sesión existente detectada en DB. Conectando automáticamente...');
     conectar();
   } else {
-    console.log('📴 No hay sesión activa válida. Esperando solicitud para iniciar conexión.');
+    console.log('📴 No hay sesión activa válida en DB. Esperando solicitud para iniciar conexión.');
   }
 }
 
