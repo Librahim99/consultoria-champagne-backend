@@ -9,13 +9,13 @@ const fs = require('fs');
 const path = require('path');
 const pino = require('pino');
 
-// CAMBIO: Importamos el modelo para limpieza
+// Importamos el modelo para limpieza y listados
 const AuthState = require('../models/AuthState');
 
 const comandos = {};
 const comandosPath = path.join(__dirname, './comandos');
 
-// CAMBIO: Importamos el nuevo mongoAuthState
+// Importamos mongoAuthState
 const useMongoAuthState = require('./servicios/mongoAuthState');
 
 // Variables globales para estado del bot (usadas en endpoints API)
@@ -24,6 +24,17 @@ let currentQr = null; // QR actual si desconectado
 let sockGlobal = null; // Referencia al socket para endpoints
 let qrAttempts = 0; // Contador de intentos de QR
 const maxQrAttempts = 3; // Máximo de intentos
+let reconnectAttempts = 0; // Contador de reintentos
+const maxReconnectAttempts = 5; // Límite de reintentos
+let reconnectDelay = 3000; // Delay inicial
+
+// Sesión actual (default de env, mutable)
+let currentSessionId = process.env.SESSION_ID || 'default';
+console.log(`🆔 Iniciando con sesión default: ${currentSessionId}`);
+
+// Variables para state y saveCreds (para recargar en switch)
+let currentState = null;
+let currentSaveCreds = null;
 
 // 🚀 Cargar todos los comandos dinámicamente
 fs.readdirSync(comandosPath)
@@ -38,42 +49,47 @@ fs.readdirSync(comandosPath)
 comandos['!ayuda'] = comandos['!menu'];
 comandos['!inicio'] = comandos['!menu'];
 
-// Función de inicialización (async, pero envuelta en promesa)
-let conectar; // Declaramos conectar globalmente
-let startConnection; // Declaramos startConnection globalmente
+// Función conectar definida globalmente (reutilizable)
+let conectar = null;
 
+// Función de inicialización (async)
 async function init() {
-  // CAMBIO: Usamos mongoAuthState con saveCreds
-  const { state, saveCreds } = await useMongoAuthState();
+  const { state, saveCreds } = await useMongoAuthState(currentSessionId);
+  currentState = state;
+  currentSaveCreds = saveCreds;
+
   const { version } = await fetchLatestBaileysVersion();
 
-  // Definimos conectar (disponible globalmente)
   conectar = () => {
+    if (!currentState) {
+      console.error('❌ Estado de autenticación no inicializado. Reiniciando sesión...');
+      return;
+    }
+
     const sock = makeWASocket({
       version,
-      auth: state,
+      auth: currentState,
       logger: pino({ level: 'silent' }),
       printQRInTerminal: false,
       browser: ['Bot Mantis', 'Chrome', '10.0']
     });
 
-    sockGlobal = sock; // Asigna el socket global
+    sockGlobal = sock;
 
-    // 🔄 Estado de conexión con manejo de Bad MAC y conteo de QR
     sock.ev.on('connection.update', async ({ connection, lastDisconnect, qr }) => {
       if (qr) {
         qrAttempts++;
-        console.log(`🔄 QR generado (intento ${qrAttempts}/${maxQrAttempts})`);
+        console.log(`🔄 QR generado (intento ${qrAttempts}/${maxQrAttempts}) para sesión ${currentSessionId}`);
         if (qrAttempts > maxQrAttempts) {
           console.log('❌ Máximo de intentos de QR alcanzado. Deteniendo proceso.');
           currentQr = null;
           qrAttempts = 0;
-          sock.end(); // Cierra el socket para detener
+          sock.end();
           botStatus = 'disconnected';
           return;
         }
-        currentQr = qr; // Actualiza QR global
-        botStatus = 'disconnected'; // Actualiza estado
+        currentQr = qr;
+        botStatus = 'disconnected';
       }
 
       if (connection === 'close') {
@@ -81,37 +97,49 @@ async function init() {
         const errorMsg = lastDisconnect?.error?.toString() || '';
         console.warn('🔌 Conexión cerrada. Código:', code);
 
-        // CAMBIO: Limpieza de DB en Bad MAC o loggedOut y reconexión auto
-        if (errorMsg.includes('Bad MAC') || code === DisconnectReason.loggedOut) {
-          console.log('❌ Sesión corrupta o cerrada (Bad MAC/loggedOut). Limpiando DB y reconectando...');
-          await AuthState.deleteMany({}); // Limpia toda la colección
-          qrAttempts = 0; // Reset attempts
-          setTimeout(conectar, 3000); // Reconexión automática
+        reconnectAttempts++;
+        if (reconnectAttempts > maxReconnectAttempts) {
+          console.error(`❌ Máximo de reintentos (${maxReconnectAttempts}) alcanzado para ${currentSessionId}. Reiniciando sesión...`);
+          await AuthState.deleteMany({ sessionId: currentSessionId });
+          reconnectAttempts = 0;
+          qrAttempts = 0;
+          currentState = null;
+          reconnectDelay = 3000; // Reset delay
+          setTimeout(() => init().then(conectar), reconnectDelay);
+          return;
+        }
+
+        if (errorMsg.includes('Bad MAC') || code === DisconnectReason.loggedOut || code === 440 || code === 515) { // CAMBIO: Manejo de 440 y 515 como inválido
+          console.log(`❌ Sesión inválida (Bad MAC/loggedOut/440/515) para ${currentSessionId}. Limpiando DB y reconectando...`);
+          await AuthState.deleteMany({ sessionId: currentSessionId });
+          qrAttempts = 0;
+          currentState = null;
+          setTimeout(conectar, reconnectDelay);
+          reconnectDelay = Math.min(reconnectDelay * 2, 60000); // Backoff: duplica delay, max 60s
         } else if (code !== DisconnectReason.loggedOut) {
-          console.log('🔁 Reintentando conexión en 3s...');
-          setTimeout(conectar, 3000);
+          console.log('🔁 Reintentando conexión en ' + (reconnectDelay / 1000) + 's...');
+          setTimeout(conectar, reconnectDelay);
+          reconnectDelay = Math.min(reconnectDelay * 1.5, 30000); // Backoff suave
         } else {
           console.log('📴 Sesión cerrada. Esperando solicitud para reconectar.');
-          qrAttempts = 0; // Reset attempts
-          // No reconectar automáticamente
+          qrAttempts = 0;
         }
-        botStatus = 'disconnected'; // Actualiza estado en cierre
-        currentQr = null; // Limpia QR
+        botStatus = 'disconnected';
+        currentQr = null;
       }
 
       if (connection === 'open') {
-        console.log('✅ Bot conectado a WhatsApp');
-        botStatus = 'connected'; // Actualiza estado
-        currentQr = null; // Limpia QR al conectar
-        qrAttempts = 0; // Reset attempts
+        console.log(`✅ Bot conectado a WhatsApp para sesión ${currentSessionId}`);
+        botStatus = 'connected';
+        currentQr = null;
+        qrAttempts = 0;
+        reconnectAttempts = 0;
+        reconnectDelay = 3000; // Reset delay al conectar
       }
     });
 
-    // 💾 Guardar credenciales
-    // CAMBIO: Usamos saveCreds
-    sock.ev.on('creds.update', saveCreds);
+    sock.ev.on('creds.update', currentSaveCreds);
 
-    // 💬 Manejo de mensajes
     sock.ev.on('messages.upsert', async ({ messages }) => {
       const mensaje = messages?.[0];
       if (!mensaje?.message || mensaje.key.fromMe) return;
@@ -149,29 +177,90 @@ async function init() {
     });
   };
 
-  // CAMBIO: Chequeo inicial: Si hay creds en DB, conectar auto
-  if (state.creds && state.creds.me) {
-    console.log('✅ Sesión existente detectada en DB. Conectando automáticamente...');
+  if (currentState?.creds?.me) {
+    console.log(`✅ Sesión existente detectada en DB para ${currentSessionId}. Conectando automáticamente...`);
     conectar();
   } else {
-    console.log('📴 No hay sesión activa válida en DB. Esperando solicitud para iniciar conexión.');
+    console.log(`📴 No hay sesión activa válida en DB para ${currentSessionId}. Esperando solicitud para iniciar conexión.`);
   }
 }
 
-// Ejecutamos init como promesa (para manejar async)
-const initPromise = init();
-
-// Función exportada para iniciar conexión manualmente (async para awaiting init)
-startConnection = async () => {
-  await initPromise; // Espera a que la inicialización async termine si no lo ha hecho
-  qrAttempts = 0; // Reset attempts al solicitar
-  conectar();
+// Función para iniciar conexión manualmente
+const startConnection = async () => {
+  await init(); // Asegura que init se ejecute si no lo ha hecho
+  qrAttempts = 0;
+  conectar(); // Llama directamente, ahora global
 };
 
-// Exportamos directamente (sin wrapper)
+// Función para switch sesión
+const switchSession = async (newSessionId) => {
+  if (newSessionId === currentSessionId) {
+    console.log(`🆔 Sesión ya es ${newSessionId}. Sin cambios.`);
+    return { success: true, message: 'Sesión ya activa.' };
+  }
+
+  console.log(`🔄 Cambiando a sesión ${newSessionId}...`);
+
+  if (sockGlobal) {
+    await sockGlobal.end();
+    sockGlobal = null;
+    botStatus = 'disconnected';
+    currentQr = null;
+    qrAttempts = 0;
+    reconnectAttempts = 0; // Resetea al cambiar
+    reconnectDelay = 3000;
+  }
+
+  currentSessionId = newSessionId;
+  const { state, saveCreds } = await useMongoAuthState(currentSessionId);
+  if (!state || !state.creds || !state.creds.me) {
+    console.warn(`⚠️ Estado inválido para ${newSessionId}. Reiniciando...`);
+    await AuthState.deleteMany({ sessionId: newSessionId });
+  }
+  currentState = state;
+  currentSaveCreds = saveCreds;
+
+  conectar(); // Llama directamente
+
+  return { success: true, message: `Sesión cambiada a ${newSessionId}. Reconectando...` };
+};
+
+// Función para listar sesiones únicas
+const getSessions = async () => {
+  const sessions = await AuthState.distinct('sessionId');
+  return sessions.length > 0 ? sessions : ['default'];
+};
+
+// CAMBIO: Nueva función para reset sesión (para endpoint)
+const resetSession = async (sessionId = currentSessionId) => {
+  console.log(`🧹 Reseteando sesión ${sessionId}...`);
+  await AuthState.deleteMany({ sessionId });
+  botStatus = 'disconnected';
+  currentQr = null;
+  qrAttempts = 0;
+  reconnectAttempts = 0;
+  reconnectDelay = 3000;
+  currentState = null;
+  if (sockGlobal) {
+    await sockGlobal.end();
+    sockGlobal = null;
+  }
+  await init(); // Reinicia state
+  conectar(); // Reconecta con QR nuevo
+  return { success: true, message: `Sesión ${sessionId} reseteada. Escanea QR nuevo.` };
+};
+
+// Exportamos directamente
 module.exports = { 
   getBotStatus: () => botStatus, 
   getCurrentQr: () => currentQr, 
   getSockGlobal: () => sockGlobal,
-  startConnection
+  startConnection,
+  switchSession,
+  getSessions,
+  getCurrentSessionId: () => currentSessionId,
+  resetSession // Nueva
 };
+
+// Ejecutamos init al requerir el módulo (para inicialización automática)
+init().catch(err => console.error('❌ Error en init:', err));

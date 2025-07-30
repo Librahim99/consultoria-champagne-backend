@@ -1,33 +1,37 @@
 const AuthState = require('../../models/AuthState');
 const { BufferJSON, initAuthCreds } = require('@whiskeysockets/baileys');
 
-async function useMongoAuthState() {
+// CAMBIO: Función recibe sessionId y lo usa en todas las operaciones
+async function useMongoAuthState(sessionId) {
+  if (!sessionId) throw new Error('sessionId es requerido');
+
   const writeData = async (data, key) => {
     await AuthState.findOneAndUpdate(
-      { key },
+      { sessionId, key }, // CAMBIO: Filtra por sessionId + key
       { value: JSON.stringify(data, BufferJSON.replacer) },
       { upsert: true }
     );
   };
 
   const readData = async (key) => {
-    const doc = await AuthState.findOne({ key });
+    const doc = await AuthState.findOne({ sessionId, key }); // CAMBIO: Filtra por sessionId + key
     if (!doc) return null;
     try {
       return JSON.parse(doc.value, BufferJSON.reviver);
     } catch (err) {
-      console.error('❌ Error parseando data:', err);
+      console.error(`❌ Error parseando data para ${sessionId}/${key}:`, err);
       return null;
     }
   };
 
   const removeData = async (key) => {
-    await AuthState.deleteOne({ key });
+    await AuthState.deleteOne({ sessionId, key }); // CAMBIO: Filtra por sessionId + key
   };
 
   let creds = await readData('creds');
   if (!creds) {
     creds = initAuthCreds();
+    await writeData(creds, 'creds'); // Guardar creds iniciales
   }
 
   const keys = {
