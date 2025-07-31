@@ -8,6 +8,9 @@ const {
 const fs = require('fs');
 const path = require('path');
 const pino = require('pino');
+const dotenv = require('dotenv');
+dotenv.config({ quiet: true });
+
 
 // Importamos el modelo para limpieza y listados
 const AuthState = require('../models/AuthState');
@@ -28,11 +31,11 @@ let reconnectAttempts = 0; // Contador de reintentos
 const maxReconnectAttempts = 5; // Límite de reintentos
 let reconnectDelay = 3000; // Delay inicial
 
-// Sesión actual (default de env, mutable)
-let currentSessionId = process.env.SESSION_ID || 'default';
-console.log(`🆔 Iniciando con sesión default: ${currentSessionId}`);
+// Sesión fija desde env
+const sessionId = process.env.SESSION_ID || 'default';
+console.log(`🆔 Usando sesión fija: ${sessionId}`);
 
-// Variables para state y saveCreds (para recargar en switch)
+// Variables para state y saveCreds
 let currentState = null;
 let currentSaveCreds = null;
 
@@ -49,12 +52,12 @@ fs.readdirSync(comandosPath)
 comandos['!ayuda'] = comandos['!menu'];
 comandos['!inicio'] = comandos['!menu'];
 
-// Función conectar definida globalmente (reutilizable)
+// Función conectar definida globalmente
 let conectar = null;
 
 // Función de inicialización (async)
 async function init() {
-  const { state, saveCreds } = await useMongoAuthState(currentSessionId);
+  const { state, saveCreds } = await useMongoAuthState(sessionId);
   currentState = state;
   currentSaveCreds = saveCreds;
 
@@ -79,7 +82,7 @@ async function init() {
     sock.ev.on('connection.update', async ({ connection, lastDisconnect, qr }) => {
       if (qr) {
         qrAttempts++;
-        console.log(`🔄 QR generado (intento ${qrAttempts}/${maxQrAttempts}) para sesión ${currentSessionId}`);
+        console.log(`🔄 QR generado (intento ${qrAttempts}/${maxQrAttempts}) para sesión ${sessionId}`);
         if (qrAttempts > maxQrAttempts) {
           console.log('❌ Máximo de intentos de QR alcanzado. Deteniendo proceso.');
           currentQr = null;
@@ -99,27 +102,31 @@ async function init() {
 
         reconnectAttempts++;
         if (reconnectAttempts > maxReconnectAttempts) {
-          console.error(`❌ Máximo de reintentos (${maxReconnectAttempts}) alcanzado para ${currentSessionId}. Reiniciando sesión...`);
-          await AuthState.deleteMany({ sessionId: currentSessionId });
+          console.error(`❌ Máximo de reintentos (${maxReconnectAttempts}) alcanzado para ${sessionId}. Reiniciando sesión...`);
+          await AuthState.deleteMany({ sessionId });
           reconnectAttempts = 0;
           qrAttempts = 0;
           currentState = null;
-          reconnectDelay = 3000; // Reset delay
+          reconnectDelay = 3000;
           setTimeout(() => init().then(conectar), reconnectDelay);
           return;
         }
 
-        if (errorMsg.includes('Bad MAC') || code === DisconnectReason.loggedOut || code === 440 || code === 515) { // CAMBIO: Manejo de 440 y 515 como inválido
-          console.log(`❌ Sesión inválida (Bad MAC/loggedOut/440/515) para ${currentSessionId}. Limpiando DB y reconectando...`);
-          await AuthState.deleteMany({ sessionId: currentSessionId });
+        if (errorMsg.includes('Bad MAC') || code === DisconnectReason.loggedOut || code === 440) { // Ajuste: No limpiar en 515 (restart required, común en init)
+          console.log(`❌ Sesión inválida (Bad MAC/loggedOut/440) para ${sessionId}. Limpiando DB y reconectando...`);
+          await AuthState.deleteMany({ sessionId });
           qrAttempts = 0;
           currentState = null;
           setTimeout(conectar, reconnectDelay);
-          reconnectDelay = Math.min(reconnectDelay * 2, 60000); // Backoff: duplica delay, max 60s
-        } else if (code !== DisconnectReason.loggedOut) {
+          reconnectDelay = Math.min(reconnectDelay * 2, 60000);
+        } else if (code !== DisconnectReason.loggedOut && code !== 515) { // Reintentar sin limpiar en 515
           console.log('🔁 Reintentando conexión en ' + (reconnectDelay / 1000) + 's...');
           setTimeout(conectar, reconnectDelay);
-          reconnectDelay = Math.min(reconnectDelay * 1.5, 30000); // Backoff suave
+          reconnectDelay = Math.min(reconnectDelay * 1.5, 30000);
+        } else if (code === 515) {
+          console.log('🔄 Restart required (515). Reintentando sin limpiar...');
+          setTimeout(conectar, reconnectDelay);
+          reconnectDelay = Math.min(reconnectDelay * 1.5, 30000);
         } else {
           console.log('📴 Sesión cerrada. Esperando solicitud para reconectar.');
           qrAttempts = 0;
@@ -129,12 +136,12 @@ async function init() {
       }
 
       if (connection === 'open') {
-        console.log(`✅ Bot conectado a WhatsApp para sesión ${currentSessionId}`);
+        console.log(`✅ Bot conectado a WhatsApp para sesión ${sessionId}`);
         botStatus = 'connected';
         currentQr = null;
         qrAttempts = 0;
         reconnectAttempts = 0;
-        reconnectDelay = 3000; // Reset delay al conectar
+        reconnectDelay = 3000;
       }
     });
 
@@ -178,76 +185,18 @@ async function init() {
   };
 
   if (currentState?.creds?.me) {
-    console.log(`✅ Sesión existente detectada en DB para ${currentSessionId}. Conectando automáticamente...`);
+    console.log(`✅ Sesión existente detectada en DB para ${sessionId}. Conectando automáticamente...`);
     conectar();
   } else {
-    console.log(`📴 No hay sesión activa válida en DB para ${currentSessionId}. Esperando solicitud para iniciar conexión.`);
+    console.log(`📴 No hay sesión activa válida en DB para ${sessionId}. Esperando solicitud para iniciar conexión.`);
   }
 }
 
 // Función para iniciar conexión manualmente
 const startConnection = async () => {
-  await init(); // Asegura que init se ejecute si no lo ha hecho
+  await init();
   qrAttempts = 0;
-  conectar(); // Llama directamente, ahora global
-};
-
-// Función para switch sesión
-const switchSession = async (newSessionId) => {
-  if (newSessionId === currentSessionId) {
-    console.log(`🆔 Sesión ya es ${newSessionId}. Sin cambios.`);
-    return { success: true, message: 'Sesión ya activa.' };
-  }
-
-  console.log(`🔄 Cambiando a sesión ${newSessionId}...`);
-
-  if (sockGlobal) {
-    await sockGlobal.end();
-    sockGlobal = null;
-    botStatus = 'disconnected';
-    currentQr = null;
-    qrAttempts = 0;
-    reconnectAttempts = 0; // Resetea al cambiar
-    reconnectDelay = 3000;
-  }
-
-  currentSessionId = newSessionId;
-  const { state, saveCreds } = await useMongoAuthState(currentSessionId);
-  if (!state || !state.creds || !state.creds.me) {
-    console.warn(`⚠️ Estado inválido para ${newSessionId}. Reiniciando...`);
-    await AuthState.deleteMany({ sessionId: newSessionId });
-  }
-  currentState = state;
-  currentSaveCreds = saveCreds;
-
-  conectar(); // Llama directamente
-
-  return { success: true, message: `Sesión cambiada a ${newSessionId}. Reconectando...` };
-};
-
-// Función para listar sesiones únicas
-const getSessions = async () => {
-  const sessions = await AuthState.distinct('sessionId');
-  return sessions.length > 0 ? sessions : ['default'];
-};
-
-// CAMBIO: Nueva función para reset sesión (para endpoint)
-const resetSession = async (sessionId = currentSessionId) => {
-  console.log(`🧹 Reseteando sesión ${sessionId}...`);
-  await AuthState.deleteMany({ sessionId });
-  botStatus = 'disconnected';
-  currentQr = null;
-  qrAttempts = 0;
-  reconnectAttempts = 0;
-  reconnectDelay = 3000;
-  currentState = null;
-  if (sockGlobal) {
-    await sockGlobal.end();
-    sockGlobal = null;
-  }
-  await init(); // Reinicia state
-  conectar(); // Reconecta con QR nuevo
-  return { success: true, message: `Sesión ${sessionId} reseteada. Escanea QR nuevo.` };
+  conectar();
 };
 
 // Exportamos directamente
@@ -255,12 +204,5 @@ module.exports = {
   getBotStatus: () => botStatus, 
   getCurrentQr: () => currentQr, 
   getSockGlobal: () => sockGlobal,
-  startConnection,
-  switchSession,
-  getSessions,
-  getCurrentSessionId: () => currentSessionId,
-  resetSession // Nueva
+  startConnection
 };
-
-// Ejecutamos init al requerir el módulo (para inicialización automática)
-init().catch(err => console.error('❌ Error en init:', err));
