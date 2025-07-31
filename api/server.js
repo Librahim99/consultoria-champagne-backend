@@ -17,7 +17,7 @@ const adminBotRouter = require('../routes/adminbot');
 // 🤖 Bot de WhatsApp
 const bot = require('../bot/index'); // Require del objeto exportado (inicialización automática)
 
-dotenv.config();
+dotenv.config({ quiet: true });
 
 const app = express();
 app.use(cors());
@@ -38,10 +38,10 @@ mongoose.connect(process.env.MONGODB_URI, {
 .catch(err => console.error('❌ Error al conectar a MongoDB:', err));
 
 app.use((req, res, next) => {
-res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-res.set('Pragma', 'no-cache');
-res.set('Expires', '0');
-next();
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  next();
 });
 
 app.get('/ping', (req, res) => res.send('OK'));

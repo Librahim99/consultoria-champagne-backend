@@ -11,9 +11,7 @@ const botModule = require('../bot'); // Require del objeto exportado
 const getBotStatus = botModule.getBotStatus;
 const getCurrentQr = botModule.getCurrentQr;
 const getSockGlobal = botModule.getSockGlobal;
-const startConnection = botModule.startConnection; // Nuevo getter para iniciar conexión
-
-console.log(getBotStatus(), getCurrentQr(), getSockGlobal()); // Para depuración
+const startConnection = botModule.startConnection;
 
 // 🔒 Middleware para control de acceso total
 const totalAccessMiddleware = (req, res, next) => {
@@ -23,14 +21,17 @@ const totalAccessMiddleware = (req, res, next) => {
   next();
 };
 
-router.get('/status', (req, res) => res.json({ status: getBotStatus(), qr: getCurrentQr() }));
+router.get('/status', (req, res) => res.json({ 
+  status: getBotStatus(), 
+  qr: getCurrentQr()
+}));
 
 router.post('/start-session', authMiddleware, totalAccessMiddleware, async (req, res) => {
   if (getBotStatus() !== 'disconnected') {
     return res.status(400).json({ message: 'El bot ya está conectado o en proceso.' });
   }
   try {
-    await startConnection(); // Await para manejar la promesa async
+    await startConnection();
     res.json({ success: true, message: 'Iniciando sesión del bot...' });
   } catch (error) {
     console.error('Error al iniciar conexión:', error);
@@ -38,18 +39,20 @@ router.post('/start-session', authMiddleware, totalAccessMiddleware, async (req,
   }
 });
 
-router.post('/logout', authMiddleware, totalAccessMiddleware, (req, res) => {
+router.post('/logout', authMiddleware, totalAccessMiddleware, async (req, res) => {
   const { password } = req.body;
   if (password !== process.env.LOGOUT_PASSWORD) {
     return res.status(401).json({ message: 'Contraseña incorrecta para cerrar sesión.' });
   }
   try {
-    fs.rmSync('auth_info', { recursive: true, force: true }); // Agregado try-catch para robustez
+    fs.rmSync('auth_info', { recursive: true, force: true });
   } catch (err) {
     console.error('Error al limpiar auth_info:', err);
   }
+  // CAMBIO: Borra documentos de la sesión actual
+  await require('../models/AuthState').deleteMany({ sessionId: process.env.SESSION_ID || 'default' });
   getSockGlobal()?.logout();
-  res.json({ success: true });
+  res.json({ success: true, message: 'Sesión cerrada y datos borrados. Escanea QR para reiniciar.' });
 });
 
 router.post('/send-test', authMiddleware, totalAccessMiddleware, async (req, res) => {

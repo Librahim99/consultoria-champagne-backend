@@ -8,14 +8,17 @@ const {
 const fs = require('fs');
 const path = require('path');
 const pino = require('pino');
+const dotenv = require('dotenv');
+dotenv.config({ quiet: true });
 
-// CAMBIO: Importamos el modelo para limpieza
+
+// Importamos el modelo para limpieza y listados
 const AuthState = require('../models/AuthState');
 
 const comandos = {};
 const comandosPath = path.join(__dirname, './comandos');
 
-// CAMBIO: Importamos el nuevo mongoAuthState
+// Importamos mongoAuthState
 const useMongoAuthState = require('./servicios/mongoAuthState');
 
 // Variables globales para estado del bot (usadas en endpoints API)
@@ -24,6 +27,17 @@ let currentQr = null; // QR actual si desconectado
 let sockGlobal = null; // Referencia al socket para endpoints
 let qrAttempts = 0; // Contador de intentos de QR
 const maxQrAttempts = 3; // Máximo de intentos
+let reconnectAttempts = 0; // Contador de reintentos
+const maxReconnectAttempts = 5; // Límite de reintentos
+let reconnectDelay = 3000; // Delay inicial
+
+// Sesión fija desde env
+const sessionId = process.env.SESSION_ID || 'default';
+console.log(`🆔 Usando sesión fija: ${sessionId}`);
+
+// Variables para state y saveCreds
+let currentState = null;
+let currentSaveCreds = null;
 
 // 🚀 Cargar todos los comandos dinámicamente
 fs.readdirSync(comandosPath)
@@ -38,42 +52,47 @@ fs.readdirSync(comandosPath)
 comandos['!ayuda'] = comandos['!menu'];
 comandos['!inicio'] = comandos['!menu'];
 
-// Función de inicialización (async, pero envuelta en promesa)
-let conectar; // Declaramos conectar globalmente
-let startConnection; // Declaramos startConnection globalmente
+// Función conectar definida globalmente
+let conectar = null;
 
+// Función de inicialización (async)
 async function init() {
-  // CAMBIO: Usamos mongoAuthState con saveCreds
-  const { state, saveCreds } = await useMongoAuthState();
+  const { state, saveCreds } = await useMongoAuthState(sessionId);
+  currentState = state;
+  currentSaveCreds = saveCreds;
+
   const { version } = await fetchLatestBaileysVersion();
 
-  // Definimos conectar (disponible globalmente)
   conectar = () => {
+    if (!currentState) {
+      console.error('❌ Estado de autenticación no inicializado. Reiniciando sesión...');
+      return;
+    }
+
     const sock = makeWASocket({
       version,
-      auth: state,
+      auth: currentState,
       logger: pino({ level: 'silent' }),
       printQRInTerminal: false,
       browser: ['Bot Mantis', 'Chrome', '10.0']
     });
 
-    sockGlobal = sock; // Asigna el socket global
+    sockGlobal = sock;
 
-    // 🔄 Estado de conexión con manejo de Bad MAC y conteo de QR
     sock.ev.on('connection.update', async ({ connection, lastDisconnect, qr }) => {
       if (qr) {
         qrAttempts++;
-        console.log(`🔄 QR generado (intento ${qrAttempts}/${maxQrAttempts})`);
+        console.log(`🔄 QR generado (intento ${qrAttempts}/${maxQrAttempts}) para sesión ${sessionId}`);
         if (qrAttempts > maxQrAttempts) {
           console.log('❌ Máximo de intentos de QR alcanzado. Deteniendo proceso.');
           currentQr = null;
           qrAttempts = 0;
-          sock.end(); // Cierra el socket para detener
+          sock.end();
           botStatus = 'disconnected';
           return;
         }
-        currentQr = qr; // Actualiza QR global
-        botStatus = 'disconnected'; // Actualiza estado
+        currentQr = qr;
+        botStatus = 'disconnected';
       }
 
       if (connection === 'close') {
@@ -81,37 +100,53 @@ async function init() {
         const errorMsg = lastDisconnect?.error?.toString() || '';
         console.warn('🔌 Conexión cerrada. Código:', code);
 
-        // CAMBIO: Limpieza de DB en Bad MAC o loggedOut y reconexión auto
-        if (errorMsg.includes('Bad MAC') || code === DisconnectReason.loggedOut) {
-          console.log('❌ Sesión corrupta o cerrada (Bad MAC/loggedOut). Limpiando DB y reconectando...');
-          await AuthState.deleteMany({}); // Limpia toda la colección
-          qrAttempts = 0; // Reset attempts
-          setTimeout(conectar, 3000); // Reconexión automática
-        } else if (code !== DisconnectReason.loggedOut) {
-          console.log('🔁 Reintentando conexión en 3s...');
-          setTimeout(conectar, 3000);
+        reconnectAttempts++;
+        if (reconnectAttempts > maxReconnectAttempts) {
+          console.error(`❌ Máximo de reintentos (${maxReconnectAttempts}) alcanzado para ${sessionId}. Reiniciando sesión...`);
+          await AuthState.deleteMany({ sessionId });
+          reconnectAttempts = 0;
+          qrAttempts = 0;
+          currentState = null;
+          reconnectDelay = 3000;
+          setTimeout(() => init().then(conectar), reconnectDelay);
+          return;
+        }
+
+        if (errorMsg.includes('Bad MAC') || code === DisconnectReason.loggedOut || code === 440) { // Ajuste: No limpiar en 515 (restart required, común en init)
+          console.log(`❌ Sesión inválida (Bad MAC/loggedOut/440) para ${sessionId}. Limpiando DB y reconectando...`);
+          await AuthState.deleteMany({ sessionId });
+          qrAttempts = 0;
+          currentState = null;
+          setTimeout(conectar, reconnectDelay);
+          reconnectDelay = Math.min(reconnectDelay * 2, 60000);
+        } else if (code !== DisconnectReason.loggedOut && code !== 515) { // Reintentar sin limpiar en 515
+          console.log('🔁 Reintentando conexión en ' + (reconnectDelay / 1000) + 's...');
+          setTimeout(conectar, reconnectDelay);
+          reconnectDelay = Math.min(reconnectDelay * 1.5, 30000);
+        } else if (code === 515) {
+          console.log('🔄 Restart required (515). Reintentando sin limpiar...');
+          setTimeout(conectar, reconnectDelay);
+          reconnectDelay = Math.min(reconnectDelay * 1.5, 30000);
         } else {
           console.log('📴 Sesión cerrada. Esperando solicitud para reconectar.');
-          qrAttempts = 0; // Reset attempts
-          // No reconectar automáticamente
+          qrAttempts = 0;
         }
-        botStatus = 'disconnected'; // Actualiza estado en cierre
-        currentQr = null; // Limpia QR
+        botStatus = 'disconnected';
+        currentQr = null;
       }
 
       if (connection === 'open') {
-        console.log('✅ Bot conectado a WhatsApp');
-        botStatus = 'connected'; // Actualiza estado
-        currentQr = null; // Limpia QR al conectar
-        qrAttempts = 0; // Reset attempts
+        console.log(`✅ Bot conectado a WhatsApp para sesión ${sessionId}`);
+        botStatus = 'connected';
+        currentQr = null;
+        qrAttempts = 0;
+        reconnectAttempts = 0;
+        reconnectDelay = 3000;
       }
     });
 
-    // 💾 Guardar credenciales
-    // CAMBIO: Usamos saveCreds
-    sock.ev.on('creds.update', saveCreds);
+    sock.ev.on('creds.update', currentSaveCreds);
 
-    // 💬 Manejo de mensajes
     sock.ev.on('messages.upsert', async ({ messages }) => {
       const mensaje = messages?.[0];
       if (!mensaje?.message || mensaje.key.fromMe) return;
@@ -149,26 +184,22 @@ async function init() {
     });
   };
 
-  // CAMBIO: Chequeo inicial: Si hay creds en DB, conectar auto
-  if (state.creds && state.creds.me) {
-    console.log('✅ Sesión existente detectada en DB. Conectando automáticamente...');
+  if (currentState?.creds?.me) {
+    console.log(`✅ Sesión existente detectada en DB para ${sessionId}. Conectando automáticamente...`);
     conectar();
   } else {
-    console.log('📴 No hay sesión activa válida en DB. Esperando solicitud para iniciar conexión.');
+    console.log(`📴 No hay sesión activa válida en DB para ${sessionId}. Esperando solicitud para iniciar conexión.`);
   }
 }
 
-// Ejecutamos init como promesa (para manejar async)
-const initPromise = init();
-
-// Función exportada para iniciar conexión manualmente (async para awaiting init)
-startConnection = async () => {
-  await initPromise; // Espera a que la inicialización async termine si no lo ha hecho
-  qrAttempts = 0; // Reset attempts al solicitar
+// Función para iniciar conexión manualmente
+const startConnection = async () => {
+  await init();
+  qrAttempts = 0;
   conectar();
 };
 
-// Exportamos directamente (sin wrapper)
+// Exportamos directamente
 module.exports = { 
   getBotStatus: () => botStatus, 
   getCurrentQr: () => currentQr, 
