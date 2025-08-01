@@ -6,7 +6,7 @@ const { ranks } = require('../utils/enums');
 
 // Middleware para verificar rango Acceso Total
 const totalAccessMiddleware = (req, res, next) => {
-  if (req.user.rank !== ranks.TOTALACCESS) {
+  if (req.user.rank === ranks.GUEST) {
     return res.status(403).json({ message: 'Acceso denegado. Requiere Acceso Total' });
   }
   next();
