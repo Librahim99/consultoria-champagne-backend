@@ -14,9 +14,6 @@ module.exports = {
   requiereGrupo: true,
 
   async ejecutar({ bot, mensaje, argumentos, usuario }) {
-    console.log('mensaje ------- ',mensaje)
-    console.log('argumentos ------- ',argumentos)
-    console.log('usuario ------- ',usuario)
     try {
       const rolesPermitidos = [ranks.TOTALACCESS, ranks.CONSULTORCHIEF];
 
@@ -36,7 +33,6 @@ module.exports = {
       }
 
       // const numeroAsignado = mensaje.mentionedJid[0].split('@')[0];
-      // console.log('num ------- ',numeroAsignado)
       const usuarioAsignado = await User.findOne({ username: argumentos[1] });
 
       if (!usuarioAsignado) {

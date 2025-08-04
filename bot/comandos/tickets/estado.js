@@ -19,7 +19,6 @@ module.exports = {
 
       const nroTicket = argumentos[0];
       const nuevoEstado = argumentos.slice(1).join(' ').trim();
-      console.log(nuevoEstado)
 
       if (!nroTicket || !nuevoEstado) {
         return responderAdvertencia(bot, mensaje, MESSAGES.FORMATO_ESTADO_INVALIDO);

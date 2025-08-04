@@ -6,6 +6,9 @@ const User = require("../models/User");
 const authMiddleware = require('../middleware/authMiddleware');
 const { ranks } = require('../utils/enums');
 const botModule = require('../bot'); // Require del objeto exportado
+const Pending = require('../models/Pending');
+const Incident = require('../models/Incident');
+const Client = require('../models/Client');
 
 // Accede a través de getters
 const getBotStatus = botModule.getBotStatus;
@@ -60,6 +63,30 @@ router.post('/send-test', authMiddleware, totalAccessMiddleware, async (req, res
   const users = await User.find({ rank: ranks.TOTALACCESS, number: { $exists: true } });
   users.forEach(user => getSockGlobal()?.sendMessage(`549${user.number}@s.whatsapp.net`, { text: message }));
   res.json({ success: true });
+});
+
+router.post('/sendPending', async (req, res) => {
+  const { pendingId, targetUserId } = req.body;
+try {
+  const pending = await Pending.findById(pendingId);
+  if (!pending) return res.status(404).json({ message: 'Pendiente no encontrado' });
+  const incidence = await Incident.findById(pending.incidentId)
+  const targetUser = await User.findById(targetUserId);
+  const client = await Client.findById(pending.clientId)
+
+  if (!targetUser) return res.status(404).json({ message: 'Usuario no encontrado' });
+  if (!targetUser.number) return res.status(400).json({ message: 'El usuario no tiene número de teléfono configurado' });
+
+  const resumen = `📌 *Resumen de Tarea Pendiente*\nCliente: ${client.name}\nFecha: ${new Date(pending.date).toLocaleString()}\nEstado: ${pending.status}\nDetalle: ${pending.detail}\nObservación: ${pending.observation || 'N/A'}\nIncidencia N°: ${incidence?.sequenceNumber || 'N/A'}`;
+
+  const jid = `549${targetUser.number}@s.whatsapp.net`;
+  getSockGlobal()?.sendMessage(jid, { text: resumen });
+
+  res.json({success:true, message: 'Resumen enviado exitosamente vía WhatsApp' });
+} catch (err) {
+  console.error('❌ Error enviando resumen:', err);
+  res.status(500).json({ message: err.message.includes('Connection Closed') ? 'Bot desconectado, intenta de nuevo' : 'Error al enviar resumen' });
+}
 });
 
 module.exports = router;

@@ -47,11 +47,9 @@ module.exports = {
     }
 
     try {
-console.log('entró 1')
       const res = await axios.get(BASE_URL, {
         headers: getAuthHeader()
       });
-console.log(res)
 
 
       const tickets = res.data.filter(t => {
