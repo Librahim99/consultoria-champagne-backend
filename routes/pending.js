@@ -61,7 +61,7 @@ router.get('/', authMiddleware, async (req, res) => {
     }
 
     const pendings = await Pending.find(filtro)
-      .populate('clientId userId assignedUserId incidentId')
+      // .populate('clientId userId assignedUserId incidentId')
       .sort({ date: -1 });
 
     res.json(pendings);
