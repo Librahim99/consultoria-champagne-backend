@@ -33,14 +33,14 @@ router.get('/', authMiddleware, totalAccessMiddleware, async (req, res) => {
 // 🔄 Actualizar usuario
 router.put('/:id', authMiddleware, totalAccessMiddleware, async (req, res) => {
   try {
-    const { username, password, number, rank } = req.body;
+    const { name, password, number, rank } = req.body;
 
     if (rank && !Object.values(ranks).includes(rank)) {
       return res.status(400).json({ message: 'Rango inválido' });
     }
 
     const updateData = {};
-    if (username) updateData.username = username;
+    if (name) updateData.name = name;
     if (rank) updateData.rank = rank;
     if (password) {
       updateData.password = await bcrypt.hash(password, 10);

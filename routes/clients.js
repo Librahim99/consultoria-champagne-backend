@@ -14,8 +14,10 @@ const totalAccessMiddleware = (req, res, next) => {
 
 // Crear cliente
 router.post('/', authMiddleware, totalAccessMiddleware, async (req, res) => {
-  const { name, common, vip, active } = req.body;
+  const { common, vip, active } = req.body;
+  let { name } = req.body;
   try {
+    name = name.toUpperCase()
     const client = new Client({ name, common, vip, active });
     await client.save();
     res.status(201).json(client);

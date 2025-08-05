@@ -6,7 +6,7 @@ let tokenExpiraEn = null; // timestamp
 
 const credenciales = {
   username: 'Consultor-IA',
-  password: 'mantis44*'
+  password: 'bot123456789'
 };
 
 // 🔐 Login
