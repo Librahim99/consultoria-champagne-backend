@@ -11,20 +11,22 @@ const userSchema = new mongoose.Schema({
   },
   password: {
     type: String,
-    required: [true, 'La contraseña es obligatoria.'],
+    required: function () {
+      return this.method !== 'google';
+    },
     minlength: [6, 'La contraseña debe tener al menos 6 caracteres.']
   },
   rank: {
     type: String,
-    required: [true, 'El rango es obligatorio.'],
+    required: function () {
+      return this.method !== 'google';
+    },
     enum: {
       values: Object.values(ranks),
       message: 'Rango inválido: {VALUE}'
     }
   },
-  number: {
-    type: String
-  },
+  number: String,
   entryDate: {
     type: Date,
     default: Date.now
@@ -36,9 +38,26 @@ const userSchema = new mongoose.Schema({
   active: {
     type: Boolean,
     default: true
+  },
+
+  // 🔽 Campos para login con Google
+  email: {
+    type: String,
+    unique: true,
+    sparse: true, // Permite múltiples nulls
+    trim: true
+  },
+  googleId: String,
+  name: String,
+  picture: String,
+  method: {
+    type: String,
+    enum: ['local', 'google'],
+    default: 'local'
   }
+
 }, {
-  timestamps: true // createdAt, updatedAt
+  timestamps: true
 });
 
 module.exports = mongoose.model('User', userSchema);
