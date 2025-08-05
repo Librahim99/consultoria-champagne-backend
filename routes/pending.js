@@ -95,7 +95,7 @@ router.put('/:id', authMiddleware, totalAccessMiddleware, async (req, res) => {
       return res.status(404).json({ message: 'Pendiente no encontrado' });
     }
 
-    res.json({ message: 'Pendiente actualizado correctamente', data: updated });
+    res.json(updated);
   } catch (error) {
     res.status(400).json({ message: 'Error al actualizar pendiente', error: error.message });
   }

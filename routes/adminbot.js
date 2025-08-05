@@ -89,4 +89,19 @@ try {
 }
 });
 
+router.post('/sendMessage', async(req, res) => {
+const {number, message} = req.body
+if (number && message) {
+  try {
+  const jid = `549${number}@s.whatsapp.net`;
+  getSockGlobal()?.sendMessage(jid, { text: message });
+  res.json({success:true, message: 'Mensaje enviado exitosamente vía WhatsApp' });
+  } catch(err) {
+  res.status(500).json('Error enviando mensaje')
+  }
+} else {
+res.status(400).json('No existe numero o mensaje')
+}
+})
+
 module.exports = router;
