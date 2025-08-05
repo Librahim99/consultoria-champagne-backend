@@ -33,7 +33,7 @@ router.get('/', authMiddleware, totalAccessMiddleware, async (req, res) => {
 // 🔄 Actualizar usuario
 router.put('/:id', authMiddleware, totalAccessMiddleware, async (req, res) => {
   try {
-    const { username, password, rank } = req.body;
+    const { username, password, number, rank } = req.body;
 
     if (rank && !Object.values(ranks).includes(rank)) {
       return res.status(400).json({ message: 'Rango inválido' });
@@ -45,6 +45,9 @@ router.put('/:id', authMiddleware, totalAccessMiddleware, async (req, res) => {
     if (password) {
       updateData.password = await bcrypt.hash(password, 10);
     }
+    if (number) {
+      updateData.number = number
+    }
 
     const user = await User.findByIdAndUpdate(req.params.id, updateData, { new: true }).select('-password');
 
@@ -52,7 +55,7 @@ router.put('/:id', authMiddleware, totalAccessMiddleware, async (req, res) => {
       return res.status(404).json({ message: 'Usuario no encontrado' });
     }
 
-    res.json({ message: 'Usuario actualizado correctamente', data: user });
+    res.json(user);
   } catch (error) {
     res.status(400).json({ message: 'Error al actualizar usuario', error: error.message });
   }
@@ -85,6 +88,18 @@ router.get('/:id/metrics', authMiddleware, totalAccessMiddleware, async (req, re
     res.status(500).json({ message: 'Error al obtener métricas', error: error.message });
   }
 });
+
+router.delete('/:id', authMiddleware, totalAccessMiddleware, async (req, res) => {
+  try {
+    const deleteUser = await User.findByIdAndDelete(req.params.id)
+    res.status(200).json('Usuario eliminado')
+    if (!deleteUser) {
+      res.status(404).json({message: "Usuario no encontrado"})
+    }
+  } catch(err) {
+      res.status(404).json({message: "Error al eliminar el usuario", error: err.message})
+  }
+})
 
 
 module.exports = router;
