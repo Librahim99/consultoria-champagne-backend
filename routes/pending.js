@@ -114,4 +114,50 @@ router.delete('/:id', authMiddleware, totalAccessMiddleware, async (req, res) =>
   }
 });
 
+// 📊 Obtener cantidad de pendientes por estado
+router.get('/por-estado', authMiddleware, async (req, res) => {
+  try {
+    const incident_status = {
+      PENDING: 'Pendiente',
+      IN_PROGRESS: 'En Proceso',
+      TEST: 'Prueba',
+      SOLVED: 'Resuelto',
+      TO_BUDGET: 'Presupuestar',
+      BUDGETED: 'Presupuestado',
+      REVISION: 'Revisión',
+      CANCELLED: 'Cancelado'
+    };
+
+    const resultado = await Pending.aggregate([
+      {
+        $group: {
+          _id: '$status',
+          total: { $sum: 1 }
+        }
+      },
+      {
+        $project: {
+          estado: {
+            $switch: {
+              branches: Object.entries(incident_status).map(([key, label]) => ({
+                case: { $eq: ['$_id', key] },
+                then: label
+              })),
+              default: 'Desconocido'
+            }
+          },
+          total: 1,
+          _id: 0
+        }
+      }
+    ]);
+
+    res.json(resultado);
+  } catch (error) {
+    console.error('❌ Error al agrupar pendientes por estado:', error);
+    res.status(500).json({ message: 'Error al obtener métricas', error: error.message });
+  }
+});
+
+
 module.exports = router;

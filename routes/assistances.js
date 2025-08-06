@@ -81,19 +81,36 @@ router.delete('/:id', authMiddleware, totalAccessMiddleware, async (req, res) =>
   }
 });
 
-// 📊 Asistencias por usuario
+// 📊 Asistencias por usuario con filtros
 router.get('/por-usuario', authMiddleware, async (req, res) => {
   try {
+    const { desde, hasta, minimo = 0 } = req.query;
+
+    const matchStage = {};
+
+    // 🕒 Filtro por campo date (NO createdAt)
+    if (desde || hasta) {
+      matchStage.date = {};
+      if (desde) matchStage.date.$gte = new Date(desde);
+      if (hasta) {
+        const hastaDate = new Date(hasta);
+        hastaDate.setHours(23, 59, 59, 999);
+        matchStage.date.$lte = hastaDate;
+      }
+    }
+
     const data = await Assistance.aggregate([
+      { $match: matchStage },
       {
         $group: {
-          _id: '$userId', // 👈 agrupamos por userId
-          total: { $sum: 1 }
-        }
+  _id: '$userId',
+  total: { $sum: 1 },
+  lastDate: { $max: '$date' }
+}
       },
       {
         $lookup: {
-          from: 'users',           // 👈 usamos la colección "users"
+          from: 'users',
           localField: '_id',
           foreignField: '_id',
           as: 'usuario'
@@ -102,15 +119,23 @@ router.get('/por-usuario', authMiddleware, async (req, res) => {
       { $unwind: '$usuario' },
       {
         $project: {
-          total: 1,
-          usuario: '$usuario.username' // 👈 el nombre visible
+  total: 1,
+  name: '$usuario.name',
+  createdAt: '$usuario.createdAt',
+  fecha: '$lastDate'
+}
+      },
+      {
+        $match: {
+          total: { $gte: Number(minimo) }
         }
       }
     ]);
 
     const resultado = data.map(d => ({
-      usuario: d.usuario,
-      total: d.total
+      name: d.name,
+      total: d.total,
+      fecha: d.fecha
     }));
 
     res.json(resultado);
@@ -119,6 +144,8 @@ router.get('/por-usuario', authMiddleware, async (req, res) => {
     res.status(500).json({ message: 'Error interno', error });
   }
 });
+
+
 
 
 module.exports = router;
