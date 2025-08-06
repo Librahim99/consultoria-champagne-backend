@@ -177,4 +177,76 @@ router.delete('/:id', authMiddleware, totalAccessMiddleware, async (req, res) =>
   }
 });
 
+// 📊 Métricas para el Dashboard (incidentes por día/semana/mes)
+router.get('/metricas-dashboard', authMiddleware, async (req, res) => {
+  try {
+    const porDia = await Incident.aggregate([
+      {
+        $group: {
+          _id: {
+            $dateToString: { format: '%Y-%m-%d', date: '$creationDate' }
+          },
+          total: { $sum: 1 }
+        }
+      },
+      { $sort: { _id: 1 } },
+      {
+        $project: {
+          fecha: '$_id',
+          total: 1,
+          _id: 0
+        }
+      }
+    ]);
+
+    const porSemana = await Incident.aggregate([
+      {
+        $group: {
+          _id: {
+            $dateToString: { format: '%Y-%U', date: '$creationDate' } // Semana del año
+          },
+          total: { $sum: 1 }
+        }
+      },
+      { $sort: { _id: 1 } },
+      {
+        $project: {
+          semana: '$_id',
+          total: 1,
+          _id: 0
+        }
+      }
+    ]);
+
+    const porMes = await Incident.aggregate([
+      {
+        $group: {
+          _id: {
+            $dateToString: { format: '%Y-%m', date: '$creationDate' }
+          },
+          total: { $sum: 1 }
+        }
+      },
+      { $sort: { _id: 1 } },
+      {
+        $project: {
+          mes: '$_id',
+          total: 1,
+          _id: 0
+        }
+      }
+    ]);
+
+    res.json({
+      porDia,    // → para IncidentesPorDiaChart
+      porSemana, // (opcional para otro gráfico)
+      porMes     // (opcional para otro gráfico)
+    });
+  } catch (error) {
+    console.error('❌ Error al calcular métricas de incidentes:', error);
+    res.status(500).json({ message: 'Error interno', error });
+  }
+});
+
+
 module.exports = router;
