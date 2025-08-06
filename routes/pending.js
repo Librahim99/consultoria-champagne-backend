@@ -114,49 +114,50 @@ router.delete('/:id', authMiddleware, totalAccessMiddleware, async (req, res) =>
   }
 });
 
-router.get('/metricas-dashboard', authMiddleware, async (req, res) => {
+// 📊 Obtener cantidad de pendientes por estado
+router.get('/por-estado', authMiddleware, async (req, res) => {
   try {
-    const porEstado = await Pending.aggregate([
-      {
-        $group: {
-          _id: '$status', // agrupar por estado
-          total: { $sum: 1 }
-        }
-      }
-    ]);
+    const incident_status = {
+      PENDING: 'Pendiente',
+      IN_PROGRESS: 'En Proceso',
+      TEST: 'Prueba',
+      SOLVED: 'Resuelto',
+      TO_BUDGET: 'Presupuestar',
+      BUDGETED: 'Presupuestado',
+      REVISION: 'Revisión',
+      CANCELLED: 'Cancelado'
+    };
 
-    const porUsuario = await Pending.aggregate([
+    const resultado = await Pending.aggregate([
       {
         $group: {
-          _id: '$userId',
+          _id: '$status',
           total: { $sum: 1 }
         }
       },
-      {
-        $lookup: {
-          from: 'users',
-          localField: '_id',
-          foreignField: '_id',
-          as: 'usuario'
-        }
-      },
-      { $unwind: '$usuario' },
       {
         $project: {
-          usuario: '$usuario.username',
-          total: 1
+          estado: {
+            $switch: {
+              branches: Object.entries(incident_status).map(([key, label]) => ({
+                case: { $eq: ['$_id', key] },
+                then: label
+              })),
+              default: 'Desconocido'
+            }
+          },
+          total: 1,
+          _id: 0
         }
       }
     ]);
 
-    res.json({
-      porEstado,
-      porUsuario
-    });
+    res.json(resultado);
   } catch (error) {
-    console.error('❌ Error en métricas de pendientes:', error);
-    res.status(500).json({ message: 'Error interno', error });
+    console.error('❌ Error al agrupar pendientes por estado:', error);
+    res.status(500).json({ message: 'Error al obtener métricas', error: error.message });
   }
 });
+
 
 module.exports = router;
