@@ -114,4 +114,49 @@ router.delete('/:id', authMiddleware, totalAccessMiddleware, async (req, res) =>
   }
 });
 
+router.get('/metricas-dashboard', authMiddleware, async (req, res) => {
+  try {
+    const porEstado = await Pending.aggregate([
+      {
+        $group: {
+          _id: '$status', // agrupar por estado
+          total: { $sum: 1 }
+        }
+      }
+    ]);
+
+    const porUsuario = await Pending.aggregate([
+      {
+        $group: {
+          _id: '$userId',
+          total: { $sum: 1 }
+        }
+      },
+      {
+        $lookup: {
+          from: 'users',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'usuario'
+        }
+      },
+      { $unwind: '$usuario' },
+      {
+        $project: {
+          usuario: '$usuario.username',
+          total: 1
+        }
+      }
+    ]);
+
+    res.json({
+      porEstado,
+      porUsuario
+    });
+  } catch (error) {
+    console.error('❌ Error en métricas de pendientes:', error);
+    res.status(500).json({ message: 'Error interno', error });
+  }
+});
+
 module.exports = router;
