@@ -4,13 +4,15 @@ const Pending = require('../models/Pending');
 const authMiddleware = require('../middleware/authMiddleware');
 const { ranks } = require('../utils/enums');
 
+// Middleware para validar Acceso Total
 const totalAccessMiddleware = (req, res, next) => {
-  if (req.user.rank !== ranks.TOTALACCESS) {
+  if (req.user.rank === ranks.GUEST) {
     return res.status(403).json({ message: 'Acceso denegado. Requiere Acceso Total' });
   }
   next();
 };
 
+// 📌 Crear pendiente
 router.post('/', authMiddleware, totalAccessMiddleware, async (req, res) => {
   const { clientId, date, status, detail, observation, incidentId, userId, assignedUserId, completionDate } = req.body;
 
@@ -42,53 +44,120 @@ router.post('/', authMiddleware, totalAccessMiddleware, async (req, res) => {
   }
 });
 
+// 📊 Obtener todos los pendientes con filtros
 router.get('/', authMiddleware, async (req, res) => {
   try {
-    const pendings = await Pending.find();
+    const { status, clientId, desde, hasta } = req.query;
+
+    const filtro = {};
+
+    if (status) filtro.status = status;
+    if (clientId) filtro.clientId = clientId;
+
+    if (desde || hasta) {
+      filtro.date = {};
+      if (desde) filtro.date.$gte = new Date(desde);
+      if (hasta) filtro.date.$lte = new Date(hasta);
+    }
+
+    const pendings = await Pending.find(filtro)
+      // .populate('clientId userId assignedUserId incidentId')
+      .sort({ date: -1 });
+
     res.json(pendings);
   } catch (error) {
     res.status(500).json({ message: 'Error al obtener pendientes', error: error.message });
   }
 });
 
+// ✏️ Actualizar pendiente
 router.put('/:id', authMiddleware, totalAccessMiddleware, async (req, res) => {
-  const { clientId, date, status, detail, observation, incidentId, userId, assignedUserId, completionDate } = req.body;
-
   try {
-    const pending = await Pending.findByIdAndUpdate(
-      req.params.id,
-      {
-        clientId,
-        date: date ? new Date(date) : undefined,
-        status,
-        detail,
-        observation,
-        incidentId,
-        userId,
-        assignedUserId,
-        completionDate: completionDate ? new Date(completionDate) : undefined,
-      },
-      { new: true }
-    );
-    if (!pending) {
+    const {
+      clientId, date, status, detail, observation,
+      incidentId, userId, assignedUserId, completionDate
+    } = req.body;
+
+    const updateData = {
+      clientId,
+      status,
+      detail,
+      observation: observation || null,
+      incidentId: incidentId || null,
+      userId,
+      assignedUserId: assignedUserId || null,
+      date: date ? new Date(date) : undefined,
+      completionDate: completionDate ? new Date(completionDate) : undefined
+    };
+
+    const updated = await Pending.findByIdAndUpdate(req.params.id, updateData, { new: true });
+    if (!updated) {
       return res.status(404).json({ message: 'Pendiente no encontrado' });
     }
-    res.json(pending);
+
+    res.json(updated);
   } catch (error) {
     res.status(400).json({ message: 'Error al actualizar pendiente', error: error.message });
   }
 });
 
+// 🗑️ Eliminar pendiente
 router.delete('/:id', authMiddleware, totalAccessMiddleware, async (req, res) => {
   try {
-    const pending = await Pending.findByIdAndDelete(req.params.id);
-    if (!pending) {
+    const deleted = await Pending.findByIdAndDelete(req.params.id);
+    if (!deleted) {
       return res.status(404).json({ message: 'Pendiente no encontrado' });
     }
-    res.json({ message: 'Pendiente eliminado' });
+    res.json({ message: 'Pendiente eliminado correctamente' });
   } catch (error) {
     res.status(500).json({ message: 'Error al eliminar pendiente', error: error.message });
   }
 });
+
+// 📊 Obtener cantidad de pendientes por estado
+router.get('/por-estado', authMiddleware, async (req, res) => {
+  try {
+    const incident_status = {
+      PENDING: 'Pendiente',
+      IN_PROGRESS: 'En Proceso',
+      TEST: 'Prueba',
+      SOLVED: 'Resuelto',
+      TO_BUDGET: 'Presupuestar',
+      BUDGETED: 'Presupuestado',
+      REVISION: 'Revisión',
+      CANCELLED: 'Cancelado'
+    };
+
+    const resultado = await Pending.aggregate([
+      {
+        $group: {
+          _id: '$status',
+          total: { $sum: 1 }
+        }
+      },
+      {
+        $project: {
+          estado: {
+            $switch: {
+              branches: Object.entries(incident_status).map(([key, label]) => ({
+                case: { $eq: ['$_id', key] },
+                then: label
+              })),
+              default: 'Desconocido'
+            }
+          },
+          total: 1,
+          _id: 0
+        }
+      }
+    ]);
+
+    res.json(resultado);
+  } catch (error) {
+    console.error('❌ Error al agrupar pendientes por estado:', error);
+    res.status(500).json({ message: 'Error al obtener métricas', error: error.message });
+  }
+});
+
 
 module.exports = router;
