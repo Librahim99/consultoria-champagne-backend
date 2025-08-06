@@ -81,4 +81,44 @@ router.delete('/:id', authMiddleware, totalAccessMiddleware, async (req, res) =>
   }
 });
 
+// 📊 Asistencias por usuario
+router.get('/por-usuario', authMiddleware, async (req, res) => {
+  try {
+    const data = await Assistance.aggregate([
+      {
+        $group: {
+          _id: '$userId', // 👈 agrupamos por userId
+          total: { $sum: 1 }
+        }
+      },
+      {
+        $lookup: {
+          from: 'users',           // 👈 usamos la colección "users"
+          localField: '_id',
+          foreignField: '_id',
+          as: 'usuario'
+        }
+      },
+      { $unwind: '$usuario' },
+      {
+        $project: {
+          total: 1,
+          usuario: '$usuario.username' // 👈 el nombre visible
+        }
+      }
+    ]);
+
+    const resultado = data.map(d => ({
+      usuario: d.usuario,
+      total: d.total
+    }));
+
+    res.json(resultado);
+  } catch (error) {
+    console.error('❌ Error al obtener asistencias por usuario:', error);
+    res.status(500).json({ message: 'Error interno', error });
+  }
+});
+
+
 module.exports = router;

@@ -27,10 +27,10 @@ const clientSchema = new mongoose.Schema({
     default: true
   },
   contactInfo: {
-    email: { type: String, default: null },
-    phone: { type: String, default: null },
-    address: { type: String, default: null }
-  },
+  emails: { type: [String], default: [] },
+  phone: { type: String, default: null },
+  address: { type: String, default: null }
+},
   config: {
     timezone: { type: String, default: 'America/Argentina/Buenos_Aires' },
     preferredLanguage: { type: String, default: 'es' }
