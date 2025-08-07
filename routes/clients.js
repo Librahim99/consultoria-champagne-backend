@@ -114,4 +114,50 @@ router.delete('/:id', authMiddleware, totalAccessMiddleware, async (req, res) =>
   }
 });
 
+router.post('/importar', async (req, res) => {
+  const { clients } = req.body;
+  try {
+  clients.forEach(async element => {
+    let newClient = {
+      name: element.name.toUpperCase(),
+      common: element.common,
+      vip: false,
+      active: true,
+      lastUpdate: element.lastUpdate
+    }
+    const client = new Client(newClient);
+    try {
+      await client.save();
+      console.log('cliente creado: ', client.name)
+    } catch(error) {
+    console.log('Error al crear cliente', client.name, client.common, error.message)
+    }
+  });
+    res.status(201).json("Clientes creados");
+  } catch (error) {
+    res.status(400).json({ message: 'Error al crear clientes', error: error.message });
+  }
+});
+
+// Actualizar fecha de licencia (lastUpdate)
+router.patch('/:id/update-license', authMiddleware, totalAccessMiddleware, async (req, res) => {
+  const { lastUpdate } = req.body;
+  if (!lastUpdate) return res.status(400).json({ message: 'Fecha de actualización requerida' });
+
+  try {
+    // Convertir YYYY-MM-DD a Date en la zona horaria de Argentina
+    const date = new Date(lastUpdate);
+    const adjustedDate = new Date(date.getTime() + date.getTimezoneOffset() * 60 * 1000); // Ajustar offset de UTC
+    const client = await Client.findByIdAndUpdate(
+      req.params.id,
+      { lastUpdate: adjustedDate },
+      { new: true }
+    );
+    if (!client) return res.status(404).json({ message: 'Cliente no encontrado' });
+    res.json(client);
+  } catch (error) {
+    res.status(400).json({ message: 'Error al actualizar fecha de licencia', error: error.message });
+  }
+});
+
 module.exports = router;
