@@ -60,6 +60,10 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ message: 'Credenciales inválidas' });
     }
 
+    // ✅ Actualizar último acceso
+    user.lastLogin = new Date();
+    await user.save();
+
     const token = generarToken(user);
 
     res.json({ token });
@@ -97,6 +101,8 @@ router.post('/google', async (req, res) => {
       user.googleId = googleId;
     }
 
+    // ✅ Actualizar último acceso
+    user.lastLogin = new Date();
     await user.save();
 
     const jwtToken = generarToken(user);
@@ -107,7 +113,6 @@ router.post('/google', async (req, res) => {
     res.status(500).json({ message: 'Error al autenticar con Google', error: err.message });
   }
 });
-
 
 // 🎫 Helper para generar JWT
 function generarToken(user) {
