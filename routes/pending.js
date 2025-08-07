@@ -1,9 +1,5 @@
 const express = require('express');
 const router = express.Router();
-const multer = require('multer');
-const csv = require('csv-parser');
-const fs = require('fs');
-const path = require('path');
 
 const Pending = require('../models/Pending');
 const Client = require('../models/Client');
@@ -12,7 +8,6 @@ const User = require('../models/User');
 const authMiddleware = require('../middleware/authMiddleware');
 const { ranks, incident_status } = require('../utils/enums');
 
-const upload = multer({ dest: 'uploads/' });
 
 const totalAccessMiddleware = (req, res, next) => {
   if (req.user.rank === ranks.GUEST) {
