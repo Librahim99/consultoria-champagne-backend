@@ -47,6 +47,10 @@ const pendingSchema = new mongoose.Schema({
     type: Date,
     default: null
   },
+  incidentNumber: {
+    type: String,
+    trim: true
+  },
   sequenceNumber: {
     type: Number,
     required: true,
@@ -54,6 +58,7 @@ const pendingSchema = new mongoose.Schema({
   }
 }, {
   timestamps: true
+  
 });
 
 module.exports = mongoose.model('Pending', pendingSchema);
