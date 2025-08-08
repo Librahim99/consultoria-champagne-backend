@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const moment = require('moment-timezone');
 const Client = require('../models/Client');
 const authMiddleware = require('../middleware/authMiddleware');
 const { ranks } = require('../utils/enums');
@@ -139,23 +140,26 @@ router.post('/importar', async (req, res) => {
   }
 });
 
-// Actualizar fecha de licencia (lastUpdate)
 router.patch('/:id/update-license', authMiddleware, totalAccessMiddleware, async (req, res) => {
   const { lastUpdate } = req.body;
   if (!lastUpdate) return res.status(400).json({ message: 'Fecha de actualización requerida' });
 
   try {
-    // Convertir YYYY-MM-DD a Date en la zona horaria de Argentina
-    const date = new Date(lastUpdate);
-    const adjustedDate = new Date(date.getTime() + date.getTimezoneOffset() * 60 * 1000); // Ajustar offset de UTC
+    if (!moment(lastUpdate, 'YYYY-MM-DD', true).isValid()) {
+      console.error('Fecha inválida recibida:', lastUpdate);
+      throw new Error('Fecha inválida');
+    }
+    // Guardar como medianoche local en UTC-3
+    const date = moment.tz(lastUpdate, 'YYYY-MM-DD', 'America/Argentina/Buenos_Aires').startOf('day').toDate();
     const client = await Client.findByIdAndUpdate(
       req.params.id,
-      { lastUpdate: adjustedDate },
+      { lastUpdate: date },
       { new: true }
     );
     if (!client) return res.status(404).json({ message: 'Cliente no encontrado' });
     res.json(client);
   } catch (error) {
+    console.error('Error al actualizar fecha:', error.message, 'Input:', lastUpdate);
     res.status(400).json({ message: 'Error al actualizar fecha de licencia', error: error.message });
   }
 });

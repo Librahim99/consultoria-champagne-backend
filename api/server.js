@@ -4,6 +4,7 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const dotenv = require('dotenv');
 
+process.env.TZ = 'America/Argentina/Buenos_Aires';
 // 🌐 Rutas API
 const { loginBot } = require('../bot/servicios/authService');
 const authRoutes = require('../routes/auth');
