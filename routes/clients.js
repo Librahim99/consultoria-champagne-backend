@@ -94,7 +94,7 @@ router.put('/:id', authMiddleware, totalAccessMiddleware, async (req, res) => {
   try {
     const client = await Client.findByIdAndUpdate(
       req.params.id,
-      { name, common, vip, active, lastUpdate: Date.now() },
+      { name, common, vip, active },
       { new: true }
     );
     if (!client) return res.status(404).json({ message: 'Cliente no encontrado' });
