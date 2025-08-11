@@ -3,6 +3,7 @@ const router = express.Router();
 const Assistance = require('../models/Assistance');
 const authMiddleware = require('../middleware/authMiddleware');
 const { ranks } = require('../utils/enums');
+const moment = require('moment'); 
 
 // 🔒 Middleware para controlar acceso total
 const totalAccessMiddleware = (req, res, next) => {
@@ -34,14 +35,32 @@ router.post('/', authMiddleware, totalAccessMiddleware, async (req, res) => {
   }
 });
 
-// 📊 Obtener todas las asistencias
 router.get('/', authMiddleware, async (req, res) => {
   try {
-    const assistances = await Assistance.find();
+    const { userFilter = 'me', dateFilter = 'week', clientId } = req.query; // Sin status
+    const filtro = {};
+
+    if (userFilter === 'me' && req.user) {
+      filtro.userId = req.user.id;
+    }
+
+    if (dateFilter !== 'all') {
+      const now = moment();
+      let startDate;
+      if (dateFilter === 'week') {
+        startDate = now.startOf('isoWeek');
+      } else if (dateFilter === 'month') {
+        startDate = now.startOf('month');
+      }
+      filtro.date = { $gte: startDate.toDate() };
+    }
+
+    if (clientId) filtro.clientId = clientId;
+
+    const assistances = await Assistance.find(filtro).sort({ date: -1 });
     res.json(assistances);
   } catch (error) {
-    console.error('❌ Error al obtener asistencias:', error);
-    res.status(500).json({ message: 'Error al obtener asistencias', error: error.message });
+    res.status(500).json({ message: 'Error al obtener assistances', error: error.message });
   }
 });
 
