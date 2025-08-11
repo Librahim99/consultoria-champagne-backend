@@ -164,4 +164,13 @@ router.patch('/:id/update-license', authMiddleware, totalAccessMiddleware, async
   }
 });
 
+router.get('/minimal', authMiddleware, async (req, res) => {
+  try {
+    const clients = await Client.find({ active: true }).select('_id name common').sort({ name: 1 });
+    res.json(clients);
+  } catch (error) {
+    res.status(500).json({ message: 'Error al obtener clients mínimos', error: error.message });
+  }
+});
+
 module.exports = router;

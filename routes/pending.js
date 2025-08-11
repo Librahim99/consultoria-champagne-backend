@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const moment = require('moment'); // Asume instalado; si no, npm i moment
 
 const Pending = require('../models/Pending');
 const Client = require('../models/Client');
@@ -56,12 +57,54 @@ router.post('/', authMiddleware, totalAccessMiddleware, async (req, res) => {
 // 📊 Obtener todos los pendientes con filtros
 router.get('/', authMiddleware, async (req, res) => {
   try {
-    const { status, clientId, desde, hasta } = req.query;
 
     const filtro = {};
+const { userFilter = 'me', dateFilter = 'week', statusFilter = 'pending_inprogress', status, clientId, desde, hasta } = req.query;
 
-    if (status) filtro.status = status;
-    if (clientId) filtro.clientId = clientId;
+// User filter
+if (userFilter === 'me' && req.user) {
+  filtro.userId = req.user.id;
+} // 'all' no agrega filtro
+
+// Date filter (prioriza sobre desde/hasta)
+if (dateFilter !== 'all') {
+  const now = moment();
+  let startDate;
+  if (dateFilter === 'week') {
+    startDate = now.startOf('isoWeek'); // Lunes
+  } else if (dateFilter === 'month') {
+    startDate = now.startOf('month');
+  }
+  filtro.date = { $gte: startDate.toDate() };
+} else if (desde || hasta) {
+  filtro.date = {};
+  if (desde) filtro.date.$gte = new Date(desde);
+  if (hasta) filtro.date.$lte = new Date(hasta);
+}
+
+// Status filter (prioriza sobre status query legacy)
+let statusValues = [];
+if (statusFilter !== 'all') {
+  switch (statusFilter) {
+    case 'pending_inprogress':
+      statusValues = ['PENDING', 'IN_PROGRESS'];
+      break;
+    case 'tobudget_budgeted':
+      statusValues = ['TO_BUDGET', 'BUDGETED'];
+      break;
+    case 'test_revision':
+      statusValues = ['TEST', 'REVISION'];
+      break;
+    case 'solved_cancelled':
+      statusValues = ['SOLVED', 'CANCELLED'];
+      break;
+  }
+  filtro.status = { $in: statusValues };
+} else if (status) {
+  filtro.status = status;
+}
+
+if (clientId) filtro.clientId = clientId;
 
     if (desde || hasta) {
       filtro.date = {};

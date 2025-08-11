@@ -101,5 +101,13 @@ router.delete('/:id', authMiddleware, totalAccessMiddleware, async (req, res) =>
   }
 })
 
+router.get('/minimal', authMiddleware, async (req, res) => {
+  try {
+    const users = await User.find({ active: true }).select('_id name number').sort({ name: 1 });
+    res.json(users);
+  } catch (error) {
+    res.status(500).json({ message: 'Error al obtener users mínimos', error: error.message });
+  }
+});
 
 module.exports = router;
