@@ -28,7 +28,7 @@ let sockGlobal = null; // Referencia al socket para endpoints
 let qrAttempts = 0; // Contador de intentos de QR
 const maxQrAttempts = 3; // Máximo de intentos
 let reconnectAttempts = 0; // Contador de reintentos
-const maxReconnectAttempts = 5; // Límite de reintentos
+const maxReconnectAttempts = 3; // Límite de reintentos
 let reconnectDelay = 3000; // Delay inicial
 
 // Sesión fija desde env
@@ -198,6 +198,8 @@ const startConnection = async () => {
   qrAttempts = 0;
   conectar();
 };
+
+startConnection()
 
 // Exportamos directamente
 module.exports = { 
