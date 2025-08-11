@@ -1,5 +1,12 @@
 const mongoose = require("mongoose");
 
+
+const AccessInterface = {
+  name: { type: String, required: true },
+  ID: { type: String, required: true },
+  password: { type: String, required: true }
+};
+
 const clientSchema = new mongoose.Schema(
   {
     name: {
@@ -39,6 +46,10 @@ const clientSchema = new mongoose.Schema(
       phone: { type: String, default: null },
       address: { type: String, default: null },
     },
+    access:{
+      type: [AccessInterface]
+    }
+    ,
     config: {
       timezone: { type: String, default: "America/Argentina/Buenos_Aires" },
       preferredLanguage: { type: String, default: "es" },

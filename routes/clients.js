@@ -164,6 +164,33 @@ router.patch('/:id/update-license', authMiddleware, totalAccessMiddleware, async
   }
 });
 
+router.patch('/:id/update-access', authMiddleware, totalAccessMiddleware, async (req, res) => {
+  const { access } = req.body;
+  try {
+    // Validar que access sea un array y que cada elemento cumpla con AccessInterface
+    if (!Array.isArray(access)) {
+      return res.status(400).json({ message: 'El campo access debe ser un array' });
+    }
+    for (const acc of access) {
+      if (!acc.name || typeof acc.name !== 'string' || 
+          !acc.ID || typeof acc.ID !== 'string' || 
+          !acc.password || typeof acc.password !== 'string') {
+        return res.status(400).json({ message: 'Cada acceso debe tener name, ID y password como strings' });
+      }
+    }
+    const client = await Client.findByIdAndUpdate(
+      req.params.id,
+      { access },
+      { new: true }
+    );
+    if (!client) return res.status(404).json({ message: 'Cliente no encontrado' });
+    res.json(client);
+  } catch (error) {
+    console.error('Error al actualizar accesos:', error.message);
+    res.status(400).json({ message: 'Error al actualizar accesos', error: error.message });
+  }
+});
+
 router.get('/minimal', authMiddleware, async (req, res) => {
   try {
     const clients = await Client.find({ active: true }).select('_id name common').sort({ name: 1 });
