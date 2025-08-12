@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const { incident_status } = require('../utils/enums');
+const { pending_status } = require('../utils/enums');
 
 const pendingSchema = new mongoose.Schema({
   clientId: {
@@ -15,7 +15,7 @@ const pendingSchema = new mongoose.Schema({
     type: String,
     required: [true, 'El estado es obligatorio.'],
     enum: {
-      values: Object.keys(incident_status),
+      values: Object.keys(pending_status),
       message: 'Estado inválido: {VALUE}.'
     }
   },

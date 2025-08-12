@@ -21,6 +21,18 @@ const incident_status = {
   CANCELLED: 'Cancelado'
 };
 
+const pending_status = {
+  PENDING: 'Pendiente',
+  IN_PROGRESS: 'En Proceso',
+  TEST:'Prueba',
+  SOLVED: 'Resuelto',
+  DEV: 'En Programación',
+  TO_BUDGET: 'Presupuestar',
+  BUDGETED: 'Presupuestado',
+  REVISION: 'Revisión',
+  CANCELLED: 'Cancelado'
+};
+
 const incident_types = {
   TICKET: 'Whatsapp Ticket',
   DEV_BUG: 'Falla',
@@ -28,4 +40,4 @@ const incident_types = {
   DEV_NEW: 'Nueva opción'
 }
 
-module.exports = { ranks,incident_status,incident_types };
+module.exports = { ranks,incident_status,incident_types,pending_status };

@@ -7,7 +7,7 @@ const Client = require('../models/Client');
 const User = require('../models/User');
 
 const authMiddleware = require('../middleware/authMiddleware');
-const { ranks, incident_status } = require('../utils/enums');
+const { ranks, pending_status } = require('../utils/enums');
 
 
 const totalAccessMiddleware = (req, res, next) => {
@@ -18,8 +18,8 @@ const totalAccessMiddleware = (req, res, next) => {
 };
 
 const statusReverseMap = {};
-for (const key in incident_status) {
-  statusReverseMap[incident_status[key]] = key;
+for (const key in pending_status) {
+  statusReverseMap[pending_status[key]] = key;
 }
 
 // 📌 Crear pendiente
@@ -59,11 +59,13 @@ router.get('/', authMiddleware, async (req, res) => {
   try {
 
     const filtro = {};
+    const filtroAsignado = {};
 const { userFilter = 'me', dateFilter = 'week', statusFilter = 'pending_inprogress', status, clientId, desde, hasta } = req.query;
 
 // User filter
 if (userFilter === 'me' && req.user) {
   filtro.userId = req.user.id;
+  filtroAsignado.assignedUserId = req.user.id
 } // 'all' no agrega filtro
 
 // Date filter (prioriza sobre desde/hasta)
@@ -112,9 +114,13 @@ if (clientId) filtro.clientId = clientId;
       if (hasta) filtro.date.$lte = new Date(hasta);
     }
 
-    const pendings = await Pending.find(filtro)
-      // .populate('clientId userId assignedUserId incidentId')
-      .sort({ date: -1 });
+    let pendings = await Pending.find(filtro)
+    // .populate('clientId userId assignedUserId incidentId')
+    const pendingsAssigned = await Pending.find(filtroAsignado)
+    pendingsAssigned.forEach(assignedPending => {
+      pendings.push(assignedPending)
+    });
+    // .sort({ date: -1 });
 
     res.json(pendings);
   } catch (error) {
@@ -169,17 +175,6 @@ router.delete('/:id', authMiddleware, totalAccessMiddleware, async (req, res) =>
 // 📊 Obtener cantidad de pendientes por estado
 router.get('/por-estado', authMiddleware, async (req, res) => {
   try {
-    const incident_status = {
-      PENDING: 'Pendiente',
-      IN_PROGRESS: 'En Proceso',
-      TEST: 'Prueba',
-      SOLVED: 'Resuelto',
-      TO_BUDGET: 'Presupuestar',
-      BUDGETED: 'Presupuestado',
-      REVISION: 'Revisión',
-      CANCELLED: 'Cancelado'
-    };
-
     const resultado = await Pending.aggregate([
       {
         $group: {
@@ -191,7 +186,7 @@ router.get('/por-estado', authMiddleware, async (req, res) => {
         $project: {
           estado: {
             $switch: {
-              branches: Object.entries(incident_status).map(([key, label]) => ({
+              branches: Object.entries(pending_status).map(([key, label]) => ({
                 case: { $eq: ['$_id', key] },
                 then: label
               })),
@@ -277,6 +272,65 @@ router.post('/import-array', async (req, res) => {
   }
 });
 
+// 🔄 Cambiar solo el estado de un pendiente
+router.patch('/:id/status', authMiddleware, async (req, res) => {
+  const { status } = req.body;
+  try {
+    if (!status) {
+      return res.status(400).json({ message: 'El campo status es requerido.' });
+    }
+
+    // Validar que el status sea válido según el enum
+    if (!Object.keys(pending_status).includes(status)) {
+      return res.status(400).json({ message: `Estado inválido: ${status}. Los valores permitidos son: ${Object.keys(pending_status).join(', ')}.` });
+    }
+
+    const updated = await Pending.findByIdAndUpdate(
+      req.params.id,
+      { status },
+      { new: true, runValidators: true } // Asegura que se validen los cambios
+    );
+
+    if (!updated) {
+      return res.status(404).json({ message: 'Pendiente no encontrado.' });
+    }
+
+    res.json(updated);
+  } catch (error) {
+    console.error('Error al cambiar estado del pendiente:', error);
+    res.status(400).json({ message: 'Error al cambiar estado', error: error.message });
+  }
+});
+
+
+router.patch('/:id/assign', authMiddleware, async (req, res) => {
+  const { assignedUserId } = req.body;
+  try {
+    if (!assignedUserId) {
+      return res.status(400).json({ message: 'El campo ID asignado es requerido.' });
+    }
+
+    const assigned = await User.findById(assignedUserId)
+    if(!assigned){
+      return res.status(400).json({ message: 'No se encontró usuario para asignar' });
+    }
+
+    const updated = await Pending.findByIdAndUpdate(
+      req.params.id,
+      { assignedUserId: assigned._id },
+      { new: true, runValidators: true } // Asegura que se validen los cambios
+    );
+
+    if (!updated) {
+      return res.status(404).json({ message: 'Pendiente no encontrado.' });
+    }
+
+    res.json(updated);
+  } catch (error) {
+    console.error('Error al asignar el pendiente:', error);
+    res.status(400).json({ message: 'Error al asignar el pendiente', error: error.message });
+  }
+});
 
 
 module.exports = router;
