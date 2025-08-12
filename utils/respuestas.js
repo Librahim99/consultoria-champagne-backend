@@ -84,7 +84,7 @@ async function enviarMensajeSeguro(bot, mensaje, texto) {
     }
 
     await bot.sendMessage(jid, { text: texto }, options);
-    console.log(`✅ Mensaje enviado a ${jid}: ${texto}`);
+    console.log(`✅ Mensaje enviado a ${jid}`);
   } catch (err) {
     console.error('❌ Error al enviar mensaje:', err);
   }

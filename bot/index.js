@@ -45,8 +45,8 @@ fs.readdirSync(comandosPath)
   .forEach(file => {
     const nombre = file.replace('.js', '');
     comandos[`!${nombre}`] = require(path.join(comandosPath, file));
-    console.log(`✅ Comando cargado: !${nombre}`);
   });
+  console.log(`✅ Comandos cargados!`);
 
 // Alias personalizados
 comandos['!ayuda'] = comandos['!menu'];
@@ -163,7 +163,7 @@ async function init() {
       const esGrupo = numero.endsWith('@g.us');
       const remitente = esGrupo ? mensaje.key.participant : numero;
 
-      console.log(`📨 Comando: ${comando} | De: ${remitente} (${esGrupo ? 'grupo' : 'contacto'})`);
+      // console.log(`📨 Comando: ${comando} | De: ${remitente} (${esGrupo ? 'grupo' : 'contacto'})`);
 
       const ejecutar = comandos[comando];
 
@@ -198,8 +198,6 @@ const startConnection = async () => {
   qrAttempts = 0;
   conectar();
 };
-
-startConnection()
 
 // Exportamos directamente
 module.exports = { 
