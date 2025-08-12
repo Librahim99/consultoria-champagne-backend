@@ -199,7 +199,7 @@ const startConnection = async () => {
   conectar();
 };
 
-startConnection()
+
 
 // Exportamos directamente
 module.exports = { 

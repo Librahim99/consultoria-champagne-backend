@@ -165,6 +165,88 @@ router.get('/por-usuario', authMiddleware, async (req, res) => {
 });
 
 
+// 📊 Métricas de asistencias por cliente (today|week|month) con TZ Buenos Aires
+router.get('/metrics', authMiddleware, async (req, res) => {
+  try {
+    const { range = 'week' } = req.query; // 'today' | 'week' | 'month'
+    const TZ = "-03:00"; // America/Argentina/Buenos_Aires
+
+    // Limites dentro del pipeline usando $$NOW y timezone
+    const startExpr =
+      range === 'today'
+        ? { $dateTrunc: { date: "$$NOW", unit: "day", timezone: TZ } }
+        : range === 'month'
+          ? { $dateTrunc: { date: "$$NOW", unit: "month", timezone: TZ } }
+          : { $dateTrunc: { date: "$$NOW", unit: "week", timezone: TZ, startOfWeek: "Mon" } };
+
+    const pipeline = [
+      {
+        $match: {
+          $expr: {
+            $and: [
+              { $gte: ["$date", startExpr] },
+              { $lte: ["$date", "$$NOW"] }
+            ]
+          }
+        }
+      },
+      // agrupar por día (con TZ) y cliente
+      {
+        $group: {
+          _id: {
+            day: { $dateToString: { format: "%Y-%m-%d", date: "$date", timezone: TZ } },
+            clientId: "$clientId"
+          },
+          count: { $sum: 1 }
+        }
+      },
+      // traer nombre del cliente sin salir de la agregación
+      {
+        $lookup: {
+          from: "clients",
+          localField: "_id.clientId",
+          foreignField: "_id",
+          as: "client"
+        }
+      },
+      { $addFields: { clientName: { $ifNull: [{ $arrayElemAt: ["$client.name", 0] }, { $toString: "$_id.clientId" }] } } },
+      { $project: { client: 0 } },
+      // reagrupar por día y armar arreglo de {name, count}
+      {
+        $group: {
+          _id: "$_id.day",
+          clients: { $push: { name: "$clientName", count: "$count" } },
+          totalDay: { $sum: "$count" }
+        }
+      },
+      { $sort: { _id: 1 } }
+    ];
+
+    const agg = await Assistance.aggregate(pipeline);
+
+    // Shape para el front: days[] con claves por cliente + lista de columnas
+    const clientSet = new Set();
+    const days = agg.map(d => {
+      const row = { date: d._id, total: d.totalDay };
+      d.clients.forEach(c => {
+        row[c.name] = (row[c.name] || 0) + c.count;
+        clientSet.add(c.name);
+      });
+      return row;
+    });
+
+    res.json({
+      range,
+      days,
+      clientNames: Array.from(clientSet).sort((a, b) => a.localeCompare(b, 'es')),
+      start: null,
+      end: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('❌ metrics error:', error);
+    res.status(500).json({ message: 'Error al obtener métricas', error: error.message });
+  }
+});
 
 
 module.exports = router;
