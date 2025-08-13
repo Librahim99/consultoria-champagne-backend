@@ -117,9 +117,11 @@ if (clientId) filtro.clientId = clientId;
     let pendings = await Pending.find(filtro)
     // .populate('clientId userId assignedUserId incidentId')
     const pendingsAssigned = await Pending.find(filtroAsignado)
-    pendingsAssigned.forEach(assignedPending => {
-      pendings.push(assignedPending)
-    });
+    if(userFilter === 'me') {
+      pendingsAssigned.forEach(assignedPending => {
+        pendings.push(assignedPending)
+      });
+    }
     // .sort({ date: -1 });
 
     res.json(pendings);

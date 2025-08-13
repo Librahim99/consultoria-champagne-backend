@@ -4,7 +4,7 @@ const router = express.Router();
 const fs = require('fs'); // Agregado: importa fs para rmSync
 const User = require("../models/User");
 const authMiddleware = require('../middleware/authMiddleware');
-const { ranks } = require('../utils/enums');
+const { ranks, pending_status } = require('../utils/enums');
 const botModule = require('../bot'); // Require del objeto exportado
 const Pending = require('../models/Pending');
 const Incident = require('../models/Incident');
@@ -34,6 +34,8 @@ router.post('/start-session', authMiddleware, totalAccessMiddleware, async (req,
     return res.status(400).json({ message: 'El bot ya está conectado o en proceso.' });
   }
   try {
+    await require('../models/AuthState').deleteMany({ sessionId: process.env.SESSION_ID || 'default' });
+  getSockGlobal()?.logout();
     await startConnection();
     res.json({ success: true, message: 'Iniciando sesión del bot...' });
   } catch (error) {
@@ -67,26 +69,29 @@ router.post('/send-test', authMiddleware, totalAccessMiddleware, async (req, res
 
 router.post('/sendPending', async (req, res) => {
   const { pendingId, targetUserId } = req.body;
-try {
-  const pending = await Pending.findById(pendingId);
-  if (!pending) return res.status(404).json({ message: 'Pendiente no encontrado' });
-  const incidence = await Incident.findById(pending.incidentId)
-  const targetUser = await User.findById(targetUserId);
-  const client = await Client.findById(pending.clientId)
+  try {
+    const pending = await Pending.findById(pendingId);
+    if (!pending) return res.status(404).json({ message: 'Pendiente no encontrado' });
+    const incidence = await Incident.findById(pending.incidentId);
+    const targetUser = await User.findById(targetUserId);
+    const client = await Client.findById(pending.clientId);
 
-  if (!targetUser) return res.status(404).json({ message: 'Usuario no encontrado' });
-  if (!targetUser.number) return res.status(400).json({ message: 'El usuario no tiene número de teléfono configurado' });
+    if (!targetUser) return res.status(404).json({ message: 'Usuario no encontrado' });
+    if (!targetUser.number) return res.status(400).json({ message: 'El usuario no tiene número de teléfono configurado' });
 
-  const resumen = `📌 *Resumen de Tarea Pendiente*\nCliente: ${client.name}\nFecha: ${new Date(pending.date).toLocaleString()}\nEstado: ${pending.status}\nDetalle: ${pending.detail}\nObservación: ${pending.observation || 'N/A'}\nIncidencia N°: ${incidence?.sequenceNumber || 'N/A'}`;
+    // Mapear el estado al valor legible usando pending_status
+    const statusText = pending_status[pending.status] || pending.status;
 
-  const jid = `549${targetUser.number}@s.whatsapp.net`;
-  getSockGlobal()?.sendMessage(jid, { text: resumen });
+    const resumen =`📌 *Resumen de Tarea Pendiente n° ${pending.sequenceNumber}*\n~~~~~~~~~~~~~~~~~~~~~~\n- ${client.name}\n- ${new Date(pending.date).toLocaleString()}\n- ${statusText}\n- ${pending.detail}\n${pending.observation ? `- ${pending.observation}`: ''}\n${pending.incidentNumber ? `- Jira #${pending.incidentNumber}`: ''}`
 
-  res.json({success:true, message: 'Resumen enviado exitosamente vía WhatsApp' });
-} catch (err) {
-  console.error('❌ Error enviando resumen:', err);
-  res.status(500).json({ message: err.message.includes('Connection Closed') ? 'Bot desconectado, intenta de nuevo' : 'Error al enviar resumen' });
-}
+    const jid = `549${targetUser.number}@s.whatsapp.net`;
+    getSockGlobal()?.sendMessage(jid, { text: resumen });
+
+    res.json({ success: true, message: 'Resumen enviado exitosamente vía WhatsApp' });
+  } catch (err) {
+    console.error('❌ Error enviando resumen:', err);
+    res.status(500).json({ message: err.message.includes('Connection Closed') ? 'Bot desconectado, intenta de nuevo' : 'Error al enviar resumen' });
+  }
 });
 
 router.post('/sendMessage', async(req, res) => {

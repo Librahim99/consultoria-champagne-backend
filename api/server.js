@@ -1,4 +1,3 @@
-// server.js
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -16,7 +15,7 @@ const pendingRouter = require('../routes/pending');
 const adminBotRouter = require('../routes/adminbot');
 
 // 🤖 Bot de WhatsApp
-const bot = require('../bot/index'); // Require del objeto exportado (inicialización automática)
+const bot = require('../bot/index'); // Require del objeto exportado (sin inicialización automática)
 
 dotenv.config({ quiet: true });
 
@@ -29,12 +28,22 @@ mongoose.connect(process.env.MONGODB_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true
 })
-.then(() => {
+.then(async () => {
   console.log('✅ Conectado a MongoDB');
 
-  loginBot(); // inicia sesión y guarda token
+  // Importar AuthState después de conectar a MongoDB
+  // const { AuthState } = require('../models/AuthState');
+  
+  // Limpiar credenciales para el sessionId actual al iniciar el servidor
+  // const sessionId = process.env.SESSION_ID || 'default';
+  // try {
+  //   await AuthState.deleteMany({ sessionId });
+  //   console.log(`🧹 Credenciales para sessionId ${sessionId} eliminadas al iniciar el servidor`);
+  // } catch (err) {
+  //   console.error(`❌ Error al eliminar credenciales para sessionId ${sessionId}:`);
+  // }
 
-  // No llamar a bot.iniciarBot() ya que se ejecuta automáticamente al require
+  loginBot(); // Inicia sesión y guarda token (mantiene funcionalidad existente)
 })
 .catch(err => console.error('❌ Error al conectar a MongoDB:', err));
 

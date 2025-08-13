@@ -40,4 +40,4 @@ const incident_types = {
   DEV_NEW: 'Nueva opción'
 }
 
-module.exports = { ranks,incident_status,incident_types,pending_status };
+module.exports = { ranks,incident_status,incident_types, pending_status };
