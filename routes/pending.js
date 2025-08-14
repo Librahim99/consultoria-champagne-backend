@@ -57,72 +57,83 @@ router.post('/', authMiddleware, totalAccessMiddleware, async (req, res) => {
 // 📊 Obtener todos los pendientes con filtros
 router.get('/', authMiddleware, async (req, res) => {
   try {
+    const { userFilter = 'me', dateFilter = 'week', statusFilter = 'pending_inprogress', status, clientId, desde, hasta } = req.query;
 
+    // Validar statusFilter
+    const validStatusFilters = ['all', 'pending_inprogress', 'tobudget_budgeted', 'test_revision', 'solved_cancelled'];
+    if (statusFilter && !validStatusFilters.includes(statusFilter)) {
+      return res.status(400).json({ message: 'statusFilter inválido' });
+    }
+
+    // Inicializar filtro base
     const filtro = {};
-    const filtroAsignado = {};
-const { userFilter = 'me', dateFilter = 'week', statusFilter = 'pending_inprogress', status, clientId, desde, hasta } = req.query;
 
-// User filter
-if (userFilter === 'me' && req.user) {
-  filtro.userId = req.user.id;
-  filtroAsignado.assignedUserId = req.user.id
-} // 'all' no agrega filtro
-
-// Date filter (prioriza sobre desde/hasta)
-if (dateFilter !== 'all') {
-  const now = moment();
-  let startDate;
-  if (dateFilter === 'week') {
-    startDate = now.startOf('isoWeek'); // Lunes
-  } else if (dateFilter === 'month') {
-    startDate = now.startOf('month');
-  }
-  filtro.date = { $gte: startDate.toDate() };
-} else if (desde || hasta) {
-  filtro.date = {};
-  if (desde) filtro.date.$gte = new Date(desde);
-  if (hasta) filtro.date.$lte = new Date(hasta);
-}
-
-// Status filter (prioriza sobre status query legacy)
-let statusValues = [];
-if (statusFilter !== 'all') {
-  switch (statusFilter) {
-    case 'pending_inprogress':
-      statusValues = ['PENDING', 'IN_PROGRESS'];
-      break;
-    case 'tobudget_budgeted':
-      statusValues = ['TO_BUDGET', 'BUDGETED'];
-      break;
-    case 'test_revision':
-      statusValues = ['TEST', 'REVISION'];
-      break;
-    case 'solved_cancelled':
-      statusValues = ['SOLVED', 'CANCELLED'];
-      break;
-  }
-  filtro.status = { $in: statusValues };
-} else if (status) {
-  filtro.status = status;
-}
-
-if (clientId) filtro.clientId = clientId;
-
-    if (desde || hasta) {
+    // Date filter (prioriza sobre desde/hasta)
+    if (dateFilter !== 'all') {
+      const now = moment();
+      let startDate;
+      if (dateFilter === 'week') {
+        startDate = now.startOf('isoWeek'); // Lunes
+      } else if (dateFilter === 'month') {
+        startDate = now.startOf('month');
+      }
+      filtro.date = { $gte: startDate.toDate() };
+    } else if (desde || hasta) {
       filtro.date = {};
-      if (desde) filtro.date.$gte = new Date(desde);
-      if (hasta) filtro.date.$lte = new Date(hasta);
+      if (desde) {
+        const desdeDate = new Date(desde);
+        if (isNaN(desdeDate.getTime())) {
+          return res.status(400).json({ message: 'Fecha "desde" inválida' });
+        }
+        filtro.date.$gte = desdeDate;
+      }
+      if (hasta) {
+        const hastaDate = new Date(hasta);
+        if (isNaN(hastaDate.getTime())) {
+          return res.status(400).json({ message: 'Fecha "hasta" inválida' });
+        }
+        filtro.date.$lte = hastaDate;
+      }
     }
 
-    let pendings = await Pending.find(filtro)
-    // .populate('clientId userId assignedUserId incidentId')
-    const pendingsAssigned = await Pending.find(filtroAsignado)
-    if(userFilter === 'me') {
-      pendingsAssigned.forEach(assignedPending => {
-        pendings.push(assignedPending)
-      });
+    // Status filter (prioriza sobre status query legacy)
+    if (statusFilter !== 'all') {
+      const statusValues = {
+        pending_inprogress: ['PENDING', 'IN_PROGRESS', 'DEV'],
+        tobudget_budgeted: ['TO_BUDGET'],
+        test_revision: ['TEST'],
+        solved_cancelled: ['SOLVED', 'CANCELLED'],
+      }[statusFilter] || [];
+      filtro.status = { $in: statusValues };
+    } else if (status) {
+      filtro.status = status;
     }
-    // .sort({ date: -1 });
+
+    if (clientId) {
+      // Validar que clientId sea un ObjectId válido
+      if (!mongoose.Types.ObjectId.isValid(clientId)) {
+        return res.status(400).json({ message: 'clientId inválido' });
+      }
+      filtro.clientId = clientId;
+    }
+
+    // Construir la consulta
+    let query = {};
+    if (userFilter === 'me' && req.user) {
+      // Combinar pendientes creados por el usuario y asignados al usuario
+      const filtroAsignado = { ...filtro, assignedUserId: req.user.id };
+      filtro.userId = req.user.id;
+      query = {
+        $or: [filtro, filtroAsignado],
+      };
+    } else {
+      query = filtro;
+    }
+
+    // Obtener pendientes
+    const pendings = await Pending.find(query)
+      .sort({ date: -1 })
+      // .populate('clientId userId assignedUserId incidentId'); // Reactivado para datos relacionados
 
     res.json(pendings);
   } catch (error) {

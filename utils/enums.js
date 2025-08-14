@@ -24,13 +24,11 @@ const incident_status = {
 const pending_status = {
   PENDING: 'Pendiente',
   IN_PROGRESS: 'En Proceso',
-  TEST:'Prueba',
-  SOLVED: 'Resuelto',
-  DEV: 'En Programación',
   TO_BUDGET: 'Presupuestar',
-  BUDGETED: 'Presupuestado',
-  REVISION: 'Revisión',
-  CANCELLED: 'Cancelado'
+  DEV: 'En Programación',
+  TEST:'Prueba',
+  CANCELLED: 'Cancelado',
+  SOLVED: 'Resuelto'
 };
 
 const incident_types = {
