@@ -96,8 +96,6 @@ router.post('/google', async (req, res) => {
         rank: ranks.CONSULTOR  // default
       });
     } else {
-      user.name = name;
-      user.picture = picture;
       user.googleId = googleId;
     }
 
