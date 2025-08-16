@@ -366,5 +366,23 @@ router.patch('/:id/priority/:priority', async (req, res) => {
   
 })
 
+router.patch('/:id', async (req, res) => {
+const field = req.body
+if(!field) {
+  res.status(400).json('No se indicó campo a actualizar')
+    return
+}
+try {
+  const updated = await Pending.findByIdAndUpdate(req.params.id, field, {new : true})
+  if(!updated) {
+    return res.status(404).json({ message: 'Pendiente no encontrado.' });
+  }
+  res.json(updated)
+} catch (err) {
+    console.error('Error al actualizar el pendiente:', error);
+    res.status(400).json({ message: 'Error al actualizar el pendiente', error: error.message });
+}
+})
+
 
 module.exports = router;

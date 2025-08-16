@@ -75,6 +75,15 @@ const pendingSchema = new mongoose.Schema({
       type: Boolean,
       default: false
     },
+    creationDate: {
+      type: Date,
+      default: null
+    },
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null
+    },
     completionDate: {
       type: Date,
       default: null
