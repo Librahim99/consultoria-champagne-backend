@@ -38,4 +38,12 @@ const incident_types = {
   DEV_NEW: 'Nueva opción'
 }
 
-module.exports = { ranks,incident_status,incident_types, pending_status };
+const priority_levels = {
+  1: 'Urgente e Importante',
+  2: 'Urgente',
+  3: 'Importante',
+  4: 'Ni Urgente ni Importante',
+  5: 'Sin prioridad'
+};
+
+module.exports = { ranks,incident_status,incident_types, pending_status, priority_levels };

@@ -346,4 +346,25 @@ router.patch('/:id/assign', authMiddleware, async (req, res) => {
 });
 
 
+router.patch('/:id/priority/:priority', async (req, res) => {
+  const {id, priority} = req.params
+  if (!id || !priority) {
+    res.status(400).json(`No se indicó ${id ? 'prioridad' : 'pendiente'}`)
+    return
+  }
+  try{
+    const updated = await Pending.findByIdAndUpdate(id, {priority}, {new: true})
+    
+    if(!updated) {
+      return res.status(404).json({ message: 'Pendiente no encontrado.' });
+    }
+    res.json(updated)
+  } catch (err) {
+    console.error('Error al actualizar la prioridad:', error);
+    res.status(400).json({ message: 'Error al actualizar la prioridad', error: error.message });
+  }
+  
+})
+
+
 module.exports = router;

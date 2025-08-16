@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const { pending_status } = require('../utils/enums');
+const { pending_status, priority_levels } = require('../utils/enums');
 
 const pendingSchema = new mongoose.Schema({
   clientId: {
@@ -55,7 +55,51 @@ const pendingSchema = new mongoose.Schema({
     type: Number,
     required: true,
     unique: true
-  }
+  },
+  priority: {
+    type: Number,
+    required: [true, 'El nivel de prioridad es obligatorio.'],
+    enum: {
+      values: Object.keys(priority_levels).map(key => parseInt(key)),  // Usamos keys como números
+      message: 'Prioridad inválida: {VALUE}.'
+    },
+    default: 5  // Default a SIN PRIORIDAD
+  },
+  checklist: [{
+    action: {
+      type: String,
+      required: [true, 'La descripción de la acción es obligatoria.'],
+      trim: true
+    },
+    completed: {
+      type: Boolean,
+      default: false
+    },
+    completionDate: {
+      type: Date,
+      default: null
+    },
+    completedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null
+    }
+  }],comments: [{
+    text: {
+      type: String,
+      required: [true, 'El texto del comentario es obligatorio.'],
+      trim: true
+    },
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: [true, 'El ID del usuario que agrega el comentario es obligatorio.']
+    },
+    date: {
+      type: Date,
+      default: Date.now
+    }
+  }]
 }, {
   timestamps: true
   
