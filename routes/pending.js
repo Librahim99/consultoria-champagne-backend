@@ -8,6 +8,7 @@ const User = require('../models/User');
 
 const authMiddleware = require('../middleware/authMiddleware');
 const { ranks, pending_status } = require('../utils/enums');
+const { today } = require('../utils/functions');
 
 
 const totalAccessMiddleware = (req, res, next) => {
@@ -297,13 +298,21 @@ router.patch('/:id/status', authMiddleware, async (req, res) => {
     if (!Object.keys(pending_status).includes(status)) {
       return res.status(400).json({ message: `Estado inválido: ${status}. Los valores permitidos son: ${Object.keys(pending_status).join(', ')}.` });
     }
+    let updated
 
-    const updated = await Pending.findByIdAndUpdate(
+    if(status === 'SOLVED') {
+      updated = await Pending.findByIdAndUpdate(
       req.params.id,
-      { status },
+      { status, completionDate: today()},
       { new: true, runValidators: true } // Asegura que se validen los cambios
     );
-
+    } else { 
+      updated = await Pending.findByIdAndUpdate(
+        req.params.id,
+        { status },
+        { new: true, runValidators: true } // Asegura que se validen los cambios
+      );      
+    }
     if (!updated) {
       return res.status(404).json({ message: 'Pendiente no encontrado.' });
     }
