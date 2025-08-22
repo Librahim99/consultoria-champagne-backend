@@ -19,6 +19,10 @@ const pendingSchema = new mongoose.Schema({
       message: 'Estado inválido: {VALUE}.'
     }
   },
+  title: {
+    type: String,
+    default: ''
+  },
   detail: {
     type: String,
     required: [true, 'El detalle es obligatorio.'],
@@ -47,6 +51,10 @@ const pendingSchema = new mongoose.Schema({
     type: Date,
     default: null
   },
+  estimatedDate: {
+      type: Date,
+      default: null
+    },
   incidentNumber: {
     type: String,
     trim: true
@@ -56,6 +64,11 @@ const pendingSchema = new mongoose.Schema({
     required: true,
     unique: true
   },
+  notifications: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: [] 
+  }],
   priority: {
     type: Number,
     required: [true, 'El nivel de prioridad es obligatorio.'],

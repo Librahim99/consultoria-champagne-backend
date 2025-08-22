@@ -35,6 +35,10 @@ const userSchema = new mongoose.Schema({
     type: Date,
     default: null
   },
+  backgroundUrl: { // Nuevo: URL de fondo personalizado
+    type: String,
+    default: null // Opcional, null si no set
+  },
   active: {
     type: Boolean,
     default: true
