@@ -23,6 +23,10 @@ const pendingSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  statusDetail: {
+    type: String,
+    default: ''
+  },
   detail: {
     type: String,
     required: [true, 'El detalle es obligatorio.'],
