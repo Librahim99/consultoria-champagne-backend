@@ -394,4 +394,39 @@ try {
 })
 
 
+router.get('/resume',authMiddleware, async (req, res) => {
+  const {userFilter} = req.query
+  let total = {
+    total: 0,
+    solved: 0
+  }
+try {
+    if(userFilter === 'me') {
+      let totalPendings = await Pending.find({ $or: [
+                { userId: req.user.id },
+                { assignedUserId: req.user.id }
+              ]})
+      totalPendings = totalPendings.filter((p) => p.status !== statusReverseMap[pending_status.CANCELLED])
+      total.total = totalPendings.length
+      total.solved = totalPendings.filter((p) => p.status === statusReverseMap[pending_status.SOLVED]).length
+      res.json(total)
+    }
+    else {
+      let totalPendings = await Pending.find()
+      totalPendings = totalPendings.filter((p) => p.status !== statusReverseMap[pending_status.CANCELLED])
+      total.total = totalPendings.length
+      total.solved = totalPendings.filter((p) => p.status === statusReverseMap[pending_status.SOLVED]).length
+      res.json(total)
+    }
+  } catch (error) {
+    console.error('Error en getPendingStats:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al obtener estadísticas de pendientes',
+      error: error.message
+    });
+  }
+})
+
+
 module.exports = router;
