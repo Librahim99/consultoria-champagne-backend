@@ -405,14 +405,14 @@ try {
       let totalPendings = await Pending.find({ $or: [
                 { userId: req.user.id },
                 { assignedUserId: req.user.id }
-              ]})
+              ]}).select('status')
       totalPendings = totalPendings.filter((p) => p.status !== statusReverseMap[pending_status.CANCELLED])
       total.total = totalPendings.length
       total.solved = totalPendings.filter((p) => p.status === statusReverseMap[pending_status.SOLVED]).length
       res.json(total)
     }
     else {
-      let totalPendings = await Pending.find()
+      let totalPendings = await Pending.find().select('status')
       totalPendings = totalPendings.filter((p) => p.status !== statusReverseMap[pending_status.CANCELLED])
       total.total = totalPendings.length
       total.solved = totalPendings.filter((p) => p.status === statusReverseMap[pending_status.SOLVED]).length
