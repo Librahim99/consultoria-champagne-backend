@@ -17,6 +17,7 @@ const licensesRoutes = require('../routes/licenses');
 
 // 🤖 Bot de WhatsApp
 const bot = require('../bot/index'); // Require del objeto exportado (sin inicialización automática)
+const { runLicenseReminders } = require('../bot/servicios/licenseReminderJob');
 // const { scheduleEveryMinutes } = require('../bot/servicios/licenseReminderJob'); // ✅ scheduler por hora
 
 
@@ -55,6 +56,34 @@ mongoose.connect(process.env.MONGODB_URI, {
   // } catch (e) {
   //   console.error('❌ No se pudo iniciar el scheduler:', e.message);
   // }
+ function runLicenceReminder(hour, minutes, func) {
+        const now = new Date();
+        let targetTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, minutes, 0, 0);
+        console.log(targetTime)
+        let delay = targetTime.getTime() - now.getTime();
+
+        if (delay < 0) { // If target time has already passed today, schedule for tomorrow
+            delay += 24 * 60 * 60 * 1000; // Add 24 hours in milliseconds
+        }
+
+        setTimeout(() => {
+            func(); // Run the function once
+            setInterval(func, 24 * 60 * 60 * 1000); // Schedule for every 24 hours
+        }, delay);
+    }
+
+    // Example: Run a function at 6:01 AM daily
+    runLicenceReminder(9, 15, () => {
+        runLicenseReminders().catch(console.error)
+    });
+
+    runLicenceReminder(14, 15, () => {
+        runLicenseReminders().catch(console.error)
+    });
+
+
+
+
 })
 .catch(err => console.error('❌ Error al conectar a MongoDB:', err));
 
