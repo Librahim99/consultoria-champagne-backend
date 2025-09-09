@@ -40,14 +40,13 @@ router.get('/run-reminders', authMiddleware, totalAccessMiddleware, async (req, 
   }
 });
 
-// GET /api/licenses/due?maxDays=15&includeInactive=false
+// GET /api/licenses/due?maxDays=15&
 router.get('/due', authMiddleware, totalAccessMiddleware, async (req, res) => {
   try {
     const LICENSE_DURATION_DAYS = Number(process.env.LICENSE_DURATION_DAYS || 62);
     const maxDays = Number.isFinite(Number(req.query.maxDays)) ? Number(req.query.maxDays) : 15;
-    const includeInactive = String(req.query.includeInactive || 'false').toLowerCase() === 'true';
 
-    const query = includeInactive ? {} : { active: true };
+    const query = { active: true };
     const clients = await Client.find(query).select('name common lastUpdate active').lean();
 
     const MS = 86400000;
