@@ -17,13 +17,9 @@ const totalAccessMiddleware = (req, res, next) => {
 router.get('/run-reminders', authMiddleware, totalAccessMiddleware, async (req, res) => {
   const dryRun = String(req.query.dryRun || 'false').toLowerCase() === 'true';
 
-  let maxDays;
-  if (typeof req.query.maxDays !== 'undefined') {
-    const parsed = Number(req.query.maxDays);
-    if (!Number.isFinite(parsed) || parsed < 0) {
-      return res.status(400).json({ ok: false, message: 'maxDays inválido (use un entero >= 0)' });
-    }
-    maxDays = parsed;
+  const maxDays = req.query.maxDays
+  if(!maxDays) {
+    return res.status(400).json({ ok: false, message: 'maxDays inválido' })
   }
 
   try {

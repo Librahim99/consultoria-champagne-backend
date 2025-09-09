@@ -70,14 +70,14 @@ async function runLicenseReminders({
     const diasRestantes = diffInDaysUTC(venc, hoy);
     // Rango min..max (ej. -10..15)
     if (diasRestantes < minDays || diasRestantes > maxDays) continue;
+    candidates.push({ client: c, diasRestantes, venc });
 
     // anti-duplicado diario por cliente/umbral
-    if (!noDedup) {
-      const dup = await LicenseReminderLog.findOne({ clientId: c._id, dateKey, daysBefore: maxDays });
-      if (dup) { out.push({ client: c.name, skipped: 'duplicate' }); continue; }
-    } else {
-      candidates.push({ client: c, diasRestantes, venc });
-    }
+    // if (!noDedup) {
+    //   const dup = await LicenseReminderLog.findOne({ clientId: c._id, dateKey, daysBefore: maxDays });
+    //   if (dup) { out.push({ client: c.name, skipped: 'duplicate' }); continue; }
+    // } else {
+    // }
   }
   const sendables = candidates.filter(x => !x.skipped).sort((a,b)=> a.diasRestantes - b.diasRestantes);
 
@@ -113,16 +113,16 @@ if (!dryRun && sendables.length > 0) {
   }
 
   // 3) Crear logs por cada cliente enviado
-  await Promise.all(
-    sendables.map(x =>
-      LicenseReminderLog.create({
-        clientId: x.client._id,
-        dateKey,
-        daysBefore: maxDays,
-        groupJid: GROUP_JID
-      })
-    )
-  );
+  // await Promise.all(
+  //   sendables.map(x =>
+  //     LicenseReminderLog.create({
+  //       clientId: x.client._id,
+  //       dateKey,
+  //       daysBefore: maxDays,
+  //       groupJid: GROUP_JID
+  //     })
+  //   )
+  // );
 }
 
   // 4) Respuesta compatible con el frontend (lista de items)
@@ -134,11 +134,11 @@ if (!dryRun && sendables.length > 0) {
   }));
 }
 
-function scheduleEveryMinutes(minutes = Number(process.env.REMINDER_FREQ_MINUTES || 60)) {
-  const m = Math.max(5, minutes|0); // piso 5 minutos por seguridad
-  // kickoff inmediato para no esperar 1h en pruebas
-  runLicenseReminders().catch(console.error);
-  setInterval(() => runLicenseReminders().catch(console.error), m * 60 * 1000);
-}
+// function scheduleEveryMinutes(minutes = Number(process.env.REMINDER_FREQ_MINUTES || 60)) {
+//   const m = Math.max(5, minutes|0); // piso 5 minutos por seguridad
+//   // kickoff inmediato para no esperar 1h en pruebas
+//   runLicenseReminders().catch(console.error);
+//   setInterval(() => runLicenseReminders().catch(console.error), m * 60 * 1000);
+// }
 
 module.exports = { runLicenseReminders, scheduleEveryMinutes, sendForClient };
