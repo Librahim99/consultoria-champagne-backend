@@ -141,4 +141,4 @@ if (!dryRun && sendables.length > 0) {
 //   setInterval(() => runLicenseReminders().catch(console.error), m * 60 * 1000);
 // }
 
-module.exports = { runLicenseReminders, scheduleEveryMinutes, sendForClient };
+module.exports = { runLicenseReminders, sendForClient };

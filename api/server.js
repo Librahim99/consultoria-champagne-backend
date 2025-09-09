@@ -17,7 +17,7 @@ const licensesRoutes = require('../routes/licenses');
 
 // 🤖 Bot de WhatsApp
 const bot = require('../bot/index'); // Require del objeto exportado (sin inicialización automática)
-const { scheduleEveryMinutes } = require('../bot/servicios/licenseReminderJob'); // ✅ scheduler por hora
+// const { scheduleEveryMinutes } = require('../bot/servicios/licenseReminderJob'); // ✅ scheduler por hora
 
 
 dotenv.config({ quiet: true });
@@ -49,12 +49,12 @@ mongoose.connect(process.env.MONGODB_URI, {
   loginBot(); // Inicia sesión y guarda token (mantiene funcionalidad existente)
 
   // ⏰ Arrancar scheduler cada 60 minutos (kickoff inmediato)
-  try {
-    scheduleEveryMinutes( Number(process.env.REMINDER_FREQ_MINUTES || 5) ); // usa REMINDER_FREQ_MINUTES=60 si querés tunear
-    console.log('⏰ Scheduler de licencias: cada 5 minutos (rango <15 días)');
-  } catch (e) {
-    console.error('❌ No se pudo iniciar el scheduler:', e.message);
-  }
+  // try {
+  //   scheduleEveryMinutes( Number(process.env.REMINDER_FREQ_MINUTES || 5) ); // usa REMINDER_FREQ_MINUTES=60 si querés tunear
+  //   console.log('⏰ Scheduler de licencias: cada 5 minutos (rango <15 días)');
+  // } catch (e) {
+  //   console.error('❌ No se pudo iniciar el scheduler:', e.message);
+  // }
 })
 .catch(err => console.error('❌ Error al conectar a MongoDB:', err));
 
