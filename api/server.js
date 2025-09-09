@@ -56,29 +56,33 @@ mongoose.connect(process.env.MONGODB_URI, {
   // } catch (e) {
   //   console.error('❌ No se pudo iniciar el scheduler:', e.message);
   // }
- function runLicenceReminder(hour, minutes, func) {
-        const now = new Date();
-        let targetTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, minutes, 0, 0);
-        let delay = targetTime.getTime() - now.getTime();
-
-        if (delay < 0) { // If target time has already passed today, schedule for tomorrow
-            delay += 24 * 60 * 60 * 1000; // Add 24 hours in milliseconds
-        }
-
-        setTimeout(() => {
-            func(); // Run the function once
-            setInterval(func, 24 * 60 * 60 * 1000); // Schedule for every 24 hours
-        }, delay);
-    }
-
-    // Example: Run a function at 6:01 AM daily
-    runLicenceReminder(9 - 3, 15, () => {
-        runLicenseReminders().catch(console.error)
-    });
-
-    runLicenceReminder(14 - 3, 15, () => {
-        runLicenseReminders().catch(console.error)
-    });
+ // ⏰ Scheduler: 2 veces por día (09:00 y 14:00 AR), solo Lunes-Viernes
+  const MS = 60 * 1000;
+  const TARGETS = [{ h: 9, m: 0, slot: 'AM' }, 
+    { h: 14, m: 0, slot: 'PM' }]
+  const inBA = (d)=> new Date(d.toLocaleString('en-US', { timeZone: 'America/Argentina/Buenos_Aires' }));
+  const nextRunAt = ({h,m})=>{
+    const now = inBA(new Date());
+    const run = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m, 0, 0);
+    if (run <= now) run.setDate(run.getDate()+1);
+    return run;
+  };
+  const isWeekday = (d)=> [1,2,3,4,5].includes(inBA(d).getDay()); // 1..5 = lun..vie
+  const scheduleOnce = ({h,m,slot})=>{
+    const tgt = nextRunAt({h,m});
+    const delay = tgt - inBA(new Date());
+    setTimeout(async () => {
+      if (isWeekday(new Date())) {
+        try {
+          // ventana pedida: -10 .. 15 (en tu front ya mostrás 16 como “≤15”)
+          await runLicenseReminders({ dryRun:false, minDays:-10, maxDays:15, runSlot:slot });
+        } catch(e){ console.error('reminder fail', e); }
+      }
+      // reprogramar para el día siguiente
+      scheduleOnce({h,m,slot});
+    }, Math.max(delay, MS));
+  };
+  TARGETS.forEach(scheduleOnce);
 
 
 

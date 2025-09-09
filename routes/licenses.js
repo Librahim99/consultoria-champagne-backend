@@ -15,20 +15,16 @@ const totalAccessMiddleware = (req, res, next) => {
 
 // GET /api/licenses/run-reminders?dryRun=true&maxDays=14
 router.get('/run-reminders', authMiddleware, totalAccessMiddleware, async (req, res) => {
-  const dryRun = String(req.query.dryRun || 'false').toLowerCase() === 'true';
+   const dryRun  = String(req.query.dryRun || 'false').toLowerCase() === 'true';
+   const maxDays = Number.isFinite(Number(req.query.maxDays)) ? Number(req.query.maxDays) : 15;
+   const minDays = Number.isFinite(Number(req.query.minDays)) ? Number(req.query.minDays) : 0;
+   const runSlot = (String(req.query.slot || 'AM').toUpperCase() === 'PM') ? 'PM' : 'AM';
 
-  const maxDays = req.query.maxDays
-  if(!maxDays) {
-    return res.status(400).json({ ok: false, message: 'maxDays inválido' })
-  }
 
   try {
-    const result = await runLicenseReminders({ dryRun, maxDays });
+    const result = await runLicenseReminders({ dryRun, maxDays, minDays, runSlot });
     return res.json({
-      ok: true,
-      dryRun,
-      maxDays: typeof maxDays === 'number' ? maxDays : '(env/def)',
-      sent: result
+      ok: true, dryRun, minDays, maxDays, slot: runSlot, sent: result
     });
   } catch (e) {
     console.error('❌ run-reminders error:', e);
