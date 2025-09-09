@@ -58,7 +58,7 @@ async function runLicenseReminders({
   if (!GROUP_JID) throw new Error('Falta LICENSES_GROUP_JID');
   const dateKey = todayKey();
   const hoy = new Date();
-  const query = includeInactive ? {} : { active: true };
+  const query = { active: true };
   const clients = await Client.find(query).lean();
 
   // 1) Filtrar candidatos y ordenar por días restantes (asc)
