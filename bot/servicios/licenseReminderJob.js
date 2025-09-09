@@ -1,4 +1,3 @@
-// bot/servicios/licenseReminderJob.js
 const Client = require('../../models/Client');
 const LicenseReminderLog = require('../../models/LicenseReminderLog');
 const botModule = require('../../bot'); // mismo patrón que adminbot usa para el socket:contentReference[oaicite:2]{index=2}
@@ -50,11 +49,11 @@ async function sendForClient(client, { dryRun=false, dateKey=todayKey(), diasRes
 }
 
 async function runLicenseReminders({
-  dryRun = false,
-  maxDays = DEFAULT_MAX_DAYS_EXCLUSIVE,
-  minDays = 0,                  // ✅ ahora aceptamos negativos (ej. -10)
-  noDedup = false               // ✅ permite reenviar sin bloquear por log
-} = {}) {
+   dryRun = false,
+   maxDays = DEFAULT_MAX_DAYS_EXCLUSIVE,
+   minDays = 0,              // 👈 NUEVO: permitir negativos (vencidos recientes)
+   runSlot = 'AM'            // 👈 NUEVO: 'AM' | 'PM' para no duplicar
+  } = {}) {
   if (!GROUP_JID) throw new Error('Falta LICENSES_GROUP_JID');
   const dateKey = todayKey();
   const hoy = new Date();
@@ -69,6 +68,7 @@ async function runLicenseReminders({
     venc.setDate(venc.getDate() + LICENSE_DURATION_DAYS);
     const diasRestantes = diffInDaysUTC(venc, hoy);
     // Rango min..max (ej. -10..15)
+    // ⬆️ ahora aceptamos desde minDays hasta maxDays (p.ej. -10..15)
     if (diasRestantes < minDays || diasRestantes > maxDays) continue;
     candidates.push({ client: c, diasRestantes, venc });
 
@@ -80,7 +80,6 @@ async function runLicenseReminders({
     // }
   }
   const sendables = candidates.filter(x => !x.skipped).sort((a,b)=> a.diasRestantes - b.diasRestantes);
-
   // 2) Si hay para enviar y no es dryRun, armar mensaje ÚNICO
 if (!dryRun && sendables.length > 0) {
   const lines = sendables.map(x =>
