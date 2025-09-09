@@ -59,7 +59,6 @@ mongoose.connect(process.env.MONGODB_URI, {
  function runLicenceReminder(hour, minutes, func) {
         const now = new Date();
         let targetTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, minutes, 0, 0);
-        console.log(targetTime)
         let delay = targetTime.getTime() - now.getTime();
 
         if (delay < 0) { // If target time has already passed today, schedule for tomorrow
@@ -73,11 +72,11 @@ mongoose.connect(process.env.MONGODB_URI, {
     }
 
     // Example: Run a function at 6:01 AM daily
-    runLicenceReminder(9, 15, () => {
+    runLicenceReminder(9 - 3, 15, () => {
         runLicenseReminders().catch(console.error)
     });
 
-    runLicenceReminder(14, 15, () => {
+    runLicenceReminder(14 - 3, 15, () => {
         runLicenseReminders().catch(console.error)
     });
 
