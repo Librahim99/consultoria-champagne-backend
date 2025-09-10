@@ -5,6 +5,10 @@ const Client = require('../models/Client');
 const authMiddleware = require('../middleware/authMiddleware');
 const { ranks } = require('../utils/enums');
 
+// 👇 Acceso al socket del bot (usa tu export existente)
+const botModule = require('../bot'); // si tu export real está en '../bot/index', cambiá aquí
+const getSockGlobal = botModule?.getSockGlobal;
+
 // Middleware para verificar rango Acceso Total
 const totalAccessMiddleware = (req, res, next) => {
   if (req.user.rank === ranks.GUEST) {
@@ -75,6 +79,8 @@ router.get('/exportar', authMiddleware, totalAccessMiddleware, async (req, res) 
       ÚltimaActualización: c.lastUpdate ? new Date(c.lastUpdate).toLocaleDateString() : 'N/A'
     }));
 
+    // Nota: asegurate de tener XLSX requerido/instalado si usás esta ruta
+    const XLSX = require('xlsx');
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Clientes');
@@ -118,30 +124,37 @@ router.delete('/:id', authMiddleware, totalAccessMiddleware, async (req, res) =>
 router.post('/importar', async (req, res) => {
   const { clients } = req.body;
   try {
-  clients.forEach(async element => {
-    let newClient = {
-      name: element.name.toUpperCase(),
-      common: element.common,
-      vip: false,
-      active: true,
-      lastUpdate: element.lastUpdate
-    }
-    const client = new Client(newClient);
-    try {
-      await client.save();
-      console.log('cliente creado: ', client.name)
-    } catch(error) {
-    console.log('Error al crear cliente', client.name, client.common, error.message)
-    }
-  });
+    clients.forEach(async element => {
+      let newClient = {
+        name: element.name.toUpperCase(),
+        common: element.common,
+        vip: false,
+        active: true,
+        lastUpdate: element.lastUpdate
+      }
+      const client = new Client(newClient);
+      try {
+        await client.save();
+        console.log('cliente creado: ', client.name)
+      } catch(error) {
+        console.log('Error al crear cliente', client.name, client.common, error.message)
+      }
+    });
     res.status(201).json("Clientes creados");
   } catch (error) {
     res.status(400).json({ message: 'Error al crear clientes', error: error.message });
   }
 });
 
+/**
+ * PATCH /api/clients/:id/update-license
+ * Body: { lastUpdate: 'YYYY-MM-DD' }
+ * Query: ?source=hoy|ayer|custom  (opcional, default custom)
+ * - Actualiza la licencia y envía al grupo un mensaje con próximo vencimiento.
+ */
 router.patch('/:id/update-license', authMiddleware, totalAccessMiddleware, async (req, res) => {
-  const { lastUpdate } = req.body;
+  const { lastUpdate } = req.body; // 'YYYY-MM-DD'
+  const source = String(req.query.source || 'custom').toLowerCase(); // hoy | ayer | custom
   if (!lastUpdate) return res.status(400).json({ message: 'Fecha de actualización requerida' });
 
   try {
@@ -149,14 +162,51 @@ router.patch('/:id/update-license', authMiddleware, totalAccessMiddleware, async
       console.error('Fecha inválida recibida:', lastUpdate);
       throw new Error('Fecha inválida');
     }
-    // Guardar como medianoche local en UTC-3
-    const date = moment.tz(lastUpdate, 'YYYY-MM-DD', 'America/Argentina/Buenos_Aires').startOf('day').toDate();
+
+    // Guardar como medianoche local AR y persistir
+    const localMidnight = moment.tz(lastUpdate, 'YYYY-MM-DD', 'America/Argentina/Buenos_Aires').startOf('day');
+    const date = localMidnight.toDate();
+
     const client = await Client.findByIdAndUpdate(
       req.params.id,
       { lastUpdate: date },
       { new: true }
     );
     if (!client) return res.status(404).json({ message: 'Cliente no encontrado' });
+
+    // ---- Notificar al grupo con próximo vencimiento ----
+    try {
+      const LICENSE_DURATION_DAYS = Number(process.env.LICENSE_DURATION_DAYS || 62);
+      const GROUP_JID = process.env.LICENSES_GROUP_JID;
+
+      const vencLocal = localMidnight.clone().add(LICENSE_DURATION_DAYS, 'days');
+      const fechaVencStr = vencLocal.format('DD/MM/YYYY');
+
+      const actor = (req.user?.name || req.user?.username || 'Sistema');
+      const sourceMap = { hoy: 'Hoy', ayer: 'Ayer', custom: 'Fecha' };
+      const accion = sourceMap[source] || 'Fecha';
+
+      // Mensaje moderno con emojis
+      const text =
+        `🟢 *Licencia actualizada*\n` +
+        `🏷️ *Cliente:* ${client.name}${client.common ? ` (${client.common})` : ''}\n` +
+        `🗓️ *Acción:* ${accion}\n` +
+        `👤 *Por:* ${actor}\n` +
+        `📆 *Próximo vencimiento:* ${fechaVencStr}\n\n` +
+        `ℹ️ Ciclo: ${LICENSE_DURATION_DAYS} días.`;
+
+      const sock = typeof getSockGlobal === 'function' ? getSockGlobal() : null;
+      if (sock && GROUP_JID) {
+        await sock.sendMessage(GROUP_JID, { text });
+      } else {
+        console.warn('⚠️ No hay socket o GROUP_JID para notificar actualización de licencia.');
+      }
+    } catch (sendErr) {
+      console.error('⚠️ No se pudo enviar mensaje al grupo:', sendErr?.message || sendErr);
+      // No rompemos la respuesta al cliente si falla el bot
+    }
+
+    // Responder con el cliente actualizado
     res.json(client);
   } catch (error) {
     console.error('Error al actualizar fecha:', error.message, 'Input:', lastUpdate);
@@ -172,8 +222,8 @@ router.patch('/:id/update-access', authMiddleware, totalAccessMiddleware, async 
       return res.status(400).json({ message: 'El campo access debe ser un array' });
     }
     for (const acc of access) {
-      if (!acc.name || typeof acc.name !== 'string' || 
-          !acc.ID || typeof acc.ID !== 'string' || 
+      if (!acc.name || typeof acc.name !== 'string' ||
+          !acc.ID || typeof acc.ID !== 'string' ||
           !acc.password || typeof acc.password !== 'string') {
         return res.status(400).json({ message: 'Cada acceso debe tener name, ID y password como strings' });
       }
