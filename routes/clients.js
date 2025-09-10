@@ -182,7 +182,7 @@ router.patch('/:id/update-license', authMiddleware, totalAccessMiddleware, async
       const vencLocal = localMidnight.clone().add(LICENSE_DURATION_DAYS, 'days');
       const fechaVencStr = vencLocal.format('DD/MM/YYYY');
 
-      const actor = (req.user?.name || req.user?.username || 'Sistema');
+      const actor = (req.user?.username || req.user?.name || 'Sistema');
       const sourceMap = { hoy: 'Hoy', ayer: 'Ayer', custom: 'Fecha' };
       const accion = sourceMap[source] || 'Fecha';
 
