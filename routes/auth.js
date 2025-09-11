@@ -119,6 +119,7 @@ function generarToken(user) {
       id: user._id,
       username: user.username,
       rank: user.rank,
+      name: user.name
     },
     process.env.JWT_SECRET,
     { expiresIn: '1d' }
