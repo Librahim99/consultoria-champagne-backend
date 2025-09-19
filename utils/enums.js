@@ -46,4 +46,15 @@ const priority_levels = {
   5: 'Sin prioridad'
 };
 
-module.exports = { ranks,incident_status,incident_types, pending_status, priority_levels };
+const budget_status = {
+  DRAFT: 'Borrador',
+  IN_REVIEW: 'En Revisión',
+  APPROVED: 'Aprobado',
+  REJECTED: 'Rechazado',
+  SENT: 'Enviado',
+  ACCEPTED: 'Aceptado',
+  LOST: 'Perdido',
+  EXPIRED: 'Vencido'
+};
+
+module.exports = { ranks,incident_status,incident_types, pending_status, priority_levels, budget_status };
