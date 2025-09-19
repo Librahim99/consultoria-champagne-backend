@@ -428,5 +428,26 @@ try {
   }
 })
 
+router.patch('/:id/changeUser/:userid', async (req, res) => {
+  try{
+    if(req.params.userid && req.params.id) {
+      const user = await User.findById(req.params.userid)
+      const pending = await Pending.findById(req.params.id)
+      newUserID= {userId: user.id}
+      if(user && pending && pending.assignedUserId !== user.id) {
+        const updated = await Pending.findByIdAndUpdate(req.params.id, newUserID, {new: true})
+        if (updated) {
+          res.json(updated)
+        }
+      } else {
+        res.json('No se pudo transferir el pendiente')
+      }
+    }
+  } catch (err) {
+    console.error('Error al transferir el pendiente:', error);
+    res.status(400).json({ message: 'Error al transferir el pendiente', error: error.message });
+}
+})
+
 
 module.exports = router;
