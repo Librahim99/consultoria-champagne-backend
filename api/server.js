@@ -26,7 +26,7 @@ dotenv.config({ quiet: true });
 
 const app = express();
 app.use(cors({
-  origin: ['http://localhost:3000'], // front dev
+  origin: ['https://dead-kit-consultoria-champagne-3e322418.koyeb.app'], // front dev
   methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
   allowedHeaders: ['Content-Type','Authorization'],
   credentials: false
