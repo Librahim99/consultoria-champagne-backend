@@ -26,7 +26,7 @@ dotenv.config({ quiet: true });
 
 const app = express();
 app.use(cors({
-  origin: ['https://mantis-consultoria-champagne.vercel.app/'], // front dev
+  origin: ['https://mantis-consultoria-champagne.vercel.app'], // front dev
   methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
   allowedHeaders: ['Content-Type','Authorization'],
   credentials: false
