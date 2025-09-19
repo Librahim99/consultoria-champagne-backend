@@ -7,6 +7,7 @@ const { ranks } = require('../utils/enums');
 
 // 👇 Acceso al socket del bot (usa tu export existente)
 const botModule = require('../bot'); // si tu export real está en '../bot/index', cambiá aquí
+const Pending = require('../models/Pending');
 const getSockGlobal = botModule?.getSockGlobal;
 
 // Middleware para verificar rango Acceso Total
@@ -248,5 +249,21 @@ router.get('/minimal', authMiddleware, async (req, res) => {
     res.status(500).json({ message: 'Error al obtener clients mínimos', error: error.message });
   }
 });
+
+router.get('/:id/getSchedule', authMiddleware, async (req, res) => {
+try {
+  const client = await Client.findById(req.params.id)
+  if(client.id) {
+    let schedule = await Pending.find({clientId: client.id}).select('_id title estimatedDate status statusDetail')
+    if (schedule.length){
+      schedule = schedule.filter((p) => p.title != '')
+      res.json(schedule)
+    }
+  }
+} catch (error) {
+    res.status(500).json({ message: 'Error al obtener agenda de cliente', error: error.message });
+  }
+})
+
 
 module.exports = router;
