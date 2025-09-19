@@ -14,6 +14,7 @@ const assistancesRoutes = require('../routes/assistances');
 const pendingRouter = require('../routes/pending');
 const adminBotRouter = require('../routes/adminbot');
 const licensesRoutes = require('../routes/licenses');
+const budgetsRoutes = require('../routes/budgets');
 
 // 🤖 Bot de WhatsApp
 const bot = require('../bot/index'); // Require del objeto exportado (sin inicialización automática)
@@ -24,7 +25,13 @@ const { runLicenseReminders } = require('../bot/servicios/licenseReminderJob');
 dotenv.config({ quiet: true });
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: ['http://localhost:3000'], // front dev
+  methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
+  allowedHeaders: ['Content-Type','Authorization'],
+  credentials: false
+}));
+app.options('*', cors());
 app.use(express.json());
 
 // 🔌 Conexión a MongoDB
@@ -108,6 +115,13 @@ app.use('/api/incidents', incidentsRoutes);
 app.use('/api/assistances', assistancesRoutes);
 app.use('/api/pending', pendingRouter);
 app.use('/api/bot', adminBotRouter);
+app.use('/api/budgets', budgetsRoutes);  
+
+app.use((err, req, res, next) => {
+  console.error('💥 Error:', err);
+  const status = err.status || 500;
+  res.status(status).json({ error: err.message || 'Server error' });
+});
 
 // 🚀 Servidor HTTP
 const PORT = process.env.PORT || 5000;
