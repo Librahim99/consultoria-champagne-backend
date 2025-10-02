@@ -44,12 +44,13 @@ router.get('/', authMiddleware, async (req, res) => {
 
 // 🔍 Buscar clientes por nombre o código común
 router.get('/buscar/:query', authMiddleware, async (req, res) => {
-  const query = req.params.query;
+  const { query } = req.params;
+  const limit = Math.min(parseInt(req.query.limit || '8', 10), 25); // ?limit=8
+  const regex = new RegExp(query, 'i');
   try {
-    const regex = new RegExp(query, 'i');
-    const results = await Client.find({
-      $or: [{ name: regex }, { common: regex }]
-    });
+    const results = await Client.find({ $or: [{ name: regex }, { common: regex }] })
+      .select('_id name common')       // solo lo que necesitás
+      .limit(limit);
     res.json(results);
   } catch (error) {
     res.status(500).json({ message: 'Error en la búsqueda', error: error.message });

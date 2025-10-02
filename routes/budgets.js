@@ -1,9 +1,10 @@
-// routes/budgets.js
 const express = require('express');
 const router = express.Router();
 const Budget = require('../models/Budget');
 const authMiddleware = require('../middleware/authMiddleware');
 const { ranks, budget_status } = require('../utils/enums');
+const Client = require('../models/Client');
+const escapeRegex = (s = '') => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 // === Middlewares ===
 const totalAccessMiddleware = (req, res, next) => {
@@ -59,8 +60,20 @@ router.get('/:id', authMiddleware, async (req, res) => {
 router.post('/', authMiddleware, totalAccessMiddleware, async (req, res) => {
   try {
     const body = req.body || {};
-    if (!body.clientId || !body.clientName || !Array.isArray(body.items) || body.items.length === 0) {
-      return res.status(400).json({ message: 'Campos requeridos: clientId, clientName, items[]' });
+
+    // Ahora solo exigimos clientName + items[]
+    if (!body.clientName || !Array.isArray(body.items) || body.items.length === 0) {
+      return res.status(400).json({ message: 'Campos requeridos: clientName, items[]' });
+    }
+
+    // Resolver clientId por nombre si no vino
+    let resolvedClientId = body.clientId ?? null;  // ← ESTA LÍNEA DEBE ESTAR
+    if (!resolvedClientId && body.clientName) {
+      const match = await Client.findOne(
+        { name: { $regex: `^${escapeRegex(body.clientName)}$`, $options: 'i' } },
+        { _id: 1 }
+      );
+      if (match) resolvedClientId = match._id;
     }
 
     const last = await Budget.findOne().sort({ code: -1 }).select('code');
@@ -68,7 +81,7 @@ router.post('/', authMiddleware, totalAccessMiddleware, async (req, res) => {
 
     const doc = new Budget({
       code,
-      clientId: body.clientId,
+      clientId: resolvedClientId, // puede ser null
       clientName: clean(body.clientName),
       currency: body.currency || 'ARS',
       items: body.items.map(it => ({
@@ -76,22 +89,25 @@ router.post('/', authMiddleware, totalAccessMiddleware, async (req, res) => {
         qty: Number(it.qty) || 0,
         unitPrice: Number(it.unitPrice) || 0,
         unit: clean(it.unit) || 'unidad',
-        taxRate: Math.min(Math.max(Number(it.taxRate) || 0, 0), 1)
+        taxRate: Math.min(Math.max(Number(it.taxRate) || 0, 0), 1),
       })),
+      discountFixed: Math.max(0, Number(body.discountFixed) || 0),
       validUntil: body.validUntil ? new Date(body.validUntil) : undefined,
       terms: clean(body.terms),
       notes: clean(body.notes),
       status: 'DRAFT',
       createdBy: req.user.id,
-      history: [{ action: 'create', userId: req.user.id, userName: req.user?.username || '' }]
+      history: [{ action: 'create', userId: req.user.id, userName: req.user?.username || '' }],
     });
 
     await doc.save();
     res.status(201).json(doc);
   } catch (error) {
+    console.error('Budget create error:', error); // útil para ver el detalle en consola
     res.status(400).json({ message: 'Error al crear presupuesto', error: error.message });
   }
 });
+
 
 // === Editar (solo DRAFT o REJECTED; mismo “tono” que tus rutas) ===
 router.put('/:id', authMiddleware, totalAccessMiddleware, async (req, res) => {
@@ -116,6 +132,10 @@ router.put('/:id', authMiddleware, totalAccessMiddleware, async (req, res) => {
         taxRate: Math.min(Math.max(Number(it.taxRate)||0,0),1)
       }));
     }
+    if (b.discountFixed !== undefined) {
+      doc.discountFixed = Math.max(0, Number(b.discountFixed) || 0);
+    }
+    
     if (b.validUntil) doc.validUntil = new Date(b.validUntil);
     if (b.terms !== undefined) doc.terms = clean(b.terms);
     if (b.notes !== undefined) doc.notes = clean(b.notes);
