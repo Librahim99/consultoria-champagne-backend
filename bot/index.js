@@ -5,11 +5,15 @@ const {
   fetchLatestBaileysVersion
 } = require('@whiskeysockets/baileys');
 
+
+
 const fs = require('fs');
 const path = require('path');
 const pino = require('pino');
 const dotenv = require('dotenv');
 dotenv.config({ quiet: true });
+
+const { DisconnectReason } = require('@whiskeysockets/baileys');
 
 
 // Importamos el modelo para limpieza y listados
@@ -74,7 +78,10 @@ async function init() {
       auth: currentState,
       logger: pino({ level: 'silent' }),
       printQRInTerminal: false,
-      browser: ['Bot Mantis', 'Chrome', '10.0']
+      browser: ['Bot Mantis', 'Chrome', '10.0'],
+      connectTimeoutMs: 60_000,
+  defaultQueryTimeoutMs: 60_000,
+  keepAliveIntervalMs: 20_000,
     });
 
     sockGlobal = sock;
@@ -112,22 +119,31 @@ async function init() {
           return;
         }
 
-        if (errorMsg.includes('Bad MAC') || code === DisconnectReason.loggedOut || code === 440) { // Ajuste: No limpiar en 515 (restart required, común en init)
-          console.log(`❌ Sesión inválida (Bad MAC/loggedOut/440) para ${sessionId}. Limpiando DB y reconectando...`);
-          await AuthState.deleteMany({ sessionId });
-          qrAttempts = 0;
-          currentState = null;
-          setTimeout(conectar, reconnectDelay);
-          reconnectDelay = Math.min(reconnectDelay * 2, 60000);
-        } else if (code !== DisconnectReason.loggedOut && code !== 515) { // Reintentar sin limpiar en 515
-          console.log('🔁 Reintentando conexión en ' + (reconnectDelay / 1000) + 's...');
-          setTimeout(conectar, reconnectDelay);
-          reconnectDelay = Math.min(reconnectDelay * 1.5, 30000);
-        } else if (code === 515) {
-          console.log('🔄 Restart required (515). Reintentando sin limpiar...');
-          setTimeout(conectar, reconnectDelay);
-          reconnectDelay = Math.min(reconnectDelay * 1.5, 30000);
-        } else {
+        if (code === DisconnectReason.loggedOut || code === 401 || code === 440 || errorMsg.includes('Bad MAC')) {
+  // Solo limpiamos si es logout REAL o sesión corrupta
+  console.log(`❌ Logout detectado o sesión corrupta (código ${code}). Borrando sesión de DB...`);
+  await AuthState.deleteMany({ sessionId });
+  currentState = null;
+  qrAttempts = 0;
+  reconnectDelay = 3000;
+  setTimeout(conectar, reconnectDelay);
+  return;
+}
+
+// 515 es NORMAL cuando WhatsApp cierra la conexión temporalmente (cerrás la app, etc.)
+if (code === 515) {
+  console.log('🔄 WhatsApp cerró la conexión temporalmente (515). Reconectando en breve...');
+  setTimeout(conectar, reconnectDelay);
+  reconnectDelay = Math.min(reconnectDelay * 1.5, 30000);
+  return;
+}
+
+// Cualquier otro cierre (red, timeout, etc.) → reintentar sin limpiar
+if (code && code !== DisconnectReason.connectionClosed) {
+  console.log(`🔁 Conexión perdida (código ${code}). Reintentando en ${reconnectDelay/1000}s...`);
+  setTimeout(conectar, reconnectDelay);
+  reconnectDelay = Math.min(reconnectDelay * 1.5, 30000);
+} else {
           console.log('📴 Sesión cerrada. Esperando solicitud para reconectar.');
           qrAttempts = 0;
         }
