@@ -63,6 +63,7 @@ async function init() {
   currentState = state;
   currentSaveCreds = saveCreds;
 
+  const { version } = await fetchLatestBaileysVersion();
   const { version: waVersion } = await fetchLatestBaileysVersion();
 console.log('Versión de WhatsApp detectada:', waVersion);
 
