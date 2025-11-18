@@ -123,6 +123,21 @@ app.use((err, req, res, next) => {
   res.status(status).json({ error: err.message || 'Server error' });
 });
 
+app.get('/health', (req, res) => {
+  res.status(200).json({
+    status: 'healthy',
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString()
+  });
+});
+
 // 🚀 Servidor HTTP
+app.get('/', (req, res) => {
+  res.status(200).json({ 
+    status: 'ok', 
+    message: 'Consultoría Champagne API 🥂', 
+    timestamp: new Date().toISOString() 
+  });
+});
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`🚀 Servidor corriendo en puerto ${PORT}`));
