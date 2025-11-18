@@ -13,8 +13,6 @@ const pino = require('pino');
 const dotenv = require('dotenv');
 dotenv.config({ quiet: true });
 
-const { DisconnectReason } = require('@whiskeysockets/baileys');
-
 
 // Importamos el modelo para limpieza y listados
 const AuthState = require('../models/AuthState');
