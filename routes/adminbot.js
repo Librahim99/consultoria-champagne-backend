@@ -44,24 +44,20 @@ router.post('/start-session', authMiddleware, totalAccessMiddleware, async (req,
   }
 });
 
-router.post('/logout', async (req, res) => {
-  try {
-    if (global.sock && global.sock.state === 'open') {
-      await global.sock.logout();
-      console.log('✅ Logout exitoso desde WhatsApp');
-    } else if (global.sock) {
-      global.sock.end(undefined);
-      console.log('🔌 Socket cerrado limpiamente');
-    }
-
-    // Borramos sesión local
-    global.clearSession();
-
-    res.json({ success: true, message: 'Bot desconectado y sesión eliminada' });
-  } catch (error) {
-    console.error('Error en logout:', error.message);
-    res.status(500).json({ success: false, message: 'Error al desconectar' });
+router.post('/logout', authMiddleware, totalAccessMiddleware, async (req, res) => {
+  const { password } = req.body;
+  if (password !== process.env.LOGOUT_PASSWORD) {
+    return res.status(401).json({ message: 'Contraseña incorrecta para cerrar sesión.' });
   }
+  try {
+    fs.rmSync('auth_info', { recursive: true, force: true });
+  } catch (err) {
+    console.error('Error al limpiar auth_info:', err);
+  }
+  // CAMBIO: Borra documentos de la sesión actual
+  await require('../models/AuthState').deleteMany({ sessionId: process.env.SESSION_ID || 'default' });
+  getSockGlobal()?.logout();
+  res.json({ success: true, message: 'Sesión cerrada y datos borrados. Escanea QR para reiniciar.' });
 });
 
 router.post('/send-test', authMiddleware, totalAccessMiddleware, async (req, res) => {
