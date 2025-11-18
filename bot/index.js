@@ -101,53 +101,38 @@ async function init() {
       }
 
       if (connection === 'close') {
-        const code = lastDisconnect?.error?.output?.statusCode;
-        const errorMsg = lastDisconnect?.error?.toString() || '';
-        console.warn('🔌 Conexión cerrada. Código:', code);
+  const code = lastDisconnect?.error?.output?.statusCode;
+  const shouldReconnect = code !== DisconnectReason.loggedOut; // 401 = logout real
 
-        reconnectAttempts++;
-        if (reconnectAttempts > maxReconnectAttempts) {
-          console.error(`❌ Máximo de reintentos (${maxReconnectAttempts}) alcanzado para ${sessionId}. Reiniciando sesión...`);
-          await AuthState.deleteMany({ sessionId });
-          reconnectAttempts = 0;
-          qrAttempts = 0;
-          currentState = null;
-          reconnectDelay = 3000;
-          setTimeout(() => init().then(conectar), reconnectDelay);
-          return;
-        }
+  console.log(`Conexión cerrada. Código: ${code || 'desconocido'}`);
 
-        if (code === DisconnectReason.loggedOut || code === 401 || code === 440 || errorMsg.includes('Bad MAC')) {
-  // Solo limpiamos si es logout REAL o sesión corrupta
-  console.log(`❌ Logout detectado o sesión corrupta (código ${code}). Borrando sesión de DB...`);
-  await AuthState.deleteMany({ sessionId });
-  currentState = null;
-  qrAttempts = 0;
-  reconnectDelay = 3000;
-  setTimeout(conectar, reconnectDelay);
-  return;
+  // 401 = logout real (otro dispositivo o logout manual)
+  if (code === 401 || code === DisconnectReason.loggedOut) {
+    console.log('❌ Logout detectado desde otro dispositivo o manual. Borrando sesión...');
+    await AuthState.deleteMany({ sessionId });
+    currentState = null;
+    botStatus = 'disconnected';
+    currentQr = null;
+    sockGlobal = null;
+    qrAttempts = 0;
+    reconnectAttempts = 0;
+    // NO reconectamos automáticamente
+    return;
+  }
+
+  // 515 = WhatsApp cerró temporalmente → reconectar sin limpiar
+  if (code === 515) {
+    console.log('🔄 WhatsApp pidió restart (515). Reconectando...');
+    setTimeout(conectar, 5000);
+    return;
+  }
+
+  // Cualquier otro código → reintento normal
+  if (shouldReconnect) {
+    console.log(`Reconectando en 5 segundos... (código ${code})`);
+    setTimeout(conectar, 5000);
+  }
 }
-
-// 515 es NORMAL cuando WhatsApp cierra la conexión temporalmente (cerrás la app, etc.)
-if (code === 515) {
-  console.log('🔄 WhatsApp cerró la conexión temporalmente (515). Reconectando en breve...');
-  setTimeout(conectar, reconnectDelay);
-  reconnectDelay = Math.min(reconnectDelay * 1.5, 30000);
-  return;
-}
-
-// Cualquier otro cierre (red, timeout, etc.) → reintentar sin limpiar
-if (code && code !== DisconnectReason.connectionClosed) {
-  console.log(`🔁 Conexión perdida (código ${code}). Reintentando en ${reconnectDelay/1000}s...`);
-  setTimeout(conectar, reconnectDelay);
-  reconnectDelay = Math.min(reconnectDelay * 1.5, 30000);
-} else {
-          console.log('📴 Sesión cerrada. Esperando solicitud para reconectar.');
-          qrAttempts = 0;
-        }
-        botStatus = 'disconnected';
-        currentQr = null;
-      }
 
       if (connection === 'open') {
         console.log(`✅ Bot conectado a WhatsApp para sesión ${sessionId}`);
