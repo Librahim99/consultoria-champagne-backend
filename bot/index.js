@@ -1,208 +1,96 @@
-// index.js
+// bot/index.js
+const fs = require('fs');
+const path = require('path');
+const { Boom } = require('@hapi/boom');
 const {
   default: makeWASocket,
   DisconnectReason,
-  fetchLatestBaileysVersion
+  useMultiFileAuthState,
+  fetchLatestBaileysVersion,
 } = require('@whiskeysockets/baileys');
-
-const fs = require('fs');
-const path = require('path');
 const pino = require('pino');
-const dotenv = require('dotenv');
-dotenv.config({ quiet: true });
 
+const sessionPath = path.join(__dirname, 'session');
 
-// Importamos el modelo para limpieza y listados
-const AuthState = require('../models/AuthState');
+// Limpieza segura de sesión (para el logout)
+global.clearSession = () => {
+  if (fs.existsSync(sessionPath)) {
+    fs.rmSync(sessionPath, { recursive: true, force: true });
+    console.log('🗑️ Sesión borrada completamente');
+  }
+};
 
-const comandos = {};
-const comandosPath = path.join(__dirname, './comandos');
-
-// Importamos mongoAuthState
-const useMongoAuthState = require('./servicios/mongoAuthState');
-
-// Variables globales para estado del bot (usadas en endpoints API)
-let botStatus = 'disconnected'; // Estado inicial
-let currentQr = null; // QR actual si desconectado
-let sockGlobal = null; // Referencia al socket para endpoints
-let qrAttempts = 0; // Contador de intentos de QR
-const maxQrAttempts = 3; // Máximo de intentos
-let reconnectAttempts = 0; // Contador de reintentos
-const maxReconnectAttempts = 3; // Límite de reintentos
-let reconnectDelay = 3000; // Delay inicial
-
-// Sesión fija desde env
-const sessionId = process.env.SESSION_ID || 'default';
-console.log(`🆔 Usando sesión fija: ${sessionId}`);
-
-// Variables para state y saveCreds
-let currentState = null;
-let currentSaveCreds = null;
-
-// 🚀 Cargar todos los comandos dinámicamente
-fs.readdirSync(comandosPath)
-  .filter(file => file.endsWith('.js'))
-  .forEach(file => {
-    const nombre = file.replace('.js', '');
-    comandos[`!${nombre}`] = require(path.join(comandosPath, file));
-  });
-  console.log(`✅ Comandos cargados!`);
-
-// Alias personalizados
-comandos['!ayuda'] = comandos['!menu'];
-comandos['!inicio'] = comandos['!menu'];
-
-// Función conectar definida globalmente
-let conectar = null;
-
-// Función de inicialización (async)
-async function init() {
-  const { state, saveCreds } = await useMongoAuthState(sessionId);
-  currentState = state;
-  currentSaveCreds = saveCreds;
-
+async function startBot() {
   const { version } = await fetchLatestBaileysVersion();
+  const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
 
-  conectar = () => {
-    if (!currentState) {
-      console.error('❌ Estado de autenticación no inicializado. Reiniciando sesión...');
-      return;
+  const sock = makeWASocket({
+    version,
+    auth: state,
+    printQRInTerminal: false, // El QR lo manejamos por endpoint
+    logger: pino({ level: 'silent' }),
+    browser: ['Consultoría Champagne', 'Chrome', '124.0'],
+    syncFullHistory: false,
+    connectTimeoutMs: 60_000,
+    defaultQueryTimeoutMs: 60_000,
+    keepAliveIntervalMs: 30_000, // evita que se duerma
+    generateHighQualityLinkPreview: true,
+  });
+
+  // Guardamos el sock global para usarlo en rutas
+  global.sock = sock;
+
+  // === MANEJO DE CONEXIÓN (ESTO ES LO QUE FALTABA) ===
+  sock.ev.on('connection.update', (update) => {
+    const { connection, lastDisconnect, qr } = update;
+
+    if (qr) {
+      console.log('📱 Nuevo QR generado');
+      // Emitimos el QR al frontend (lo manejamos en adminbot.js)
+      if (global.io) {
+        global.io.emit('qr', qr);
+      }
     }
 
-    const sock = makeWASocket({
-      version,
-      auth: currentState,
-      logger: pino({ level: 'silent' }),
-      printQRInTerminal: false,
-      browser: ['Bot Mantis', 'Chrome', '10.0']
-    });
+    if (connection === 'close') {
+      const statusCode = lastDisconnect?.error?.output?.statusCode;
+      const shouldReconnect = statusCode !== DisconnectReason.loggedOut; // 401
 
-    sockGlobal = sock;
+      console.log('Conexión cerrada:', statusCode || 'desconocido');
 
-    sock.ev.on('connection.update', async ({ connection, lastDisconnect, qr }) => {
-      if (qr) {
-        qrAttempts++;
-        console.log(`🔄 QR generado (intento ${qrAttempts}/${maxQrAttempts}) para sesión ${sessionId}`);
-        if (qrAttempts > maxQrAttempts) {
-          console.log('❌ Máximo de intentos de QR alcanzado. Deteniendo proceso.');
-          currentQr = null;
-          qrAttempts = 0;
-          sock.end();
-          botStatus = 'disconnected';
-          return;
-        }
-        currentQr = qr;
-        botStatus = 'disconnected';
+      if (statusCode === DisconnectReason.loggedOut) {
+        console.log('❌ Logout manual detectado → no se reconecta');
+        global.clearSession();
+      } else if (shouldReconnect) {
+        console.log('🔄 Reconectando en 5 segundos...');
+        setTimeout(startBot, 5000);
       }
-
-      if (connection === 'close') {
-        const code = lastDisconnect?.error?.output?.statusCode;
-        const errorMsg = lastDisconnect?.error?.toString() || '';
-        console.warn('🔌 Conexión cerrada. Código:', code);
-
-        reconnectAttempts++;
-        if (reconnectAttempts > maxReconnectAttempts) {
-          console.error(`❌ Máximo de reintentos (${maxReconnectAttempts}) alcanzado para ${sessionId}. Reiniciando sesión...`);
-          await AuthState.deleteMany({ sessionId });
-          reconnectAttempts = 0;
-          qrAttempts = 0;
-          currentState = null;
-          reconnectDelay = 3000;
-          setTimeout(() => init().then(conectar), reconnectDelay);
-          return;
-        }
-
-        if (errorMsg.includes('Bad MAC') || code === DisconnectReason.loggedOut || code === 440) { // Ajuste: No limpiar en 515 (restart required, común en init)
-          console.log(`❌ Sesión inválida (Bad MAC/loggedOut/440) para ${sessionId}. Limpiando DB y reconectando...`);
-          await AuthState.deleteMany({ sessionId });
-          qrAttempts = 0;
-          currentState = null;
-          setTimeout(conectar, reconnectDelay);
-          reconnectDelay = Math.min(reconnectDelay * 2, 60000);
-        } else if (code !== DisconnectReason.loggedOut && code !== 515) { // Reintentar sin limpiar en 515
-          console.log('🔁 Reintentando conexión en ' + (reconnectDelay / 1000) + 's...');
-          setTimeout(conectar, reconnectDelay);
-          reconnectDelay = Math.min(reconnectDelay * 1.5, 30000);
-        } else if (code === 515) {
-          console.log('🔄 Restart required (515). Reintentando sin limpiar...');
-          setTimeout(conectar, reconnectDelay);
-          reconnectDelay = Math.min(reconnectDelay * 1.5, 30000);
-        } else {
-          console.log('📴 Sesión cerrada. Esperando solicitud para reconectar.');
-          qrAttempts = 0;
-        }
-        botStatus = 'disconnected';
-        currentQr = null;
+    } else if (connection === 'open') {
+      console.log('✅ Bot conectado a WhatsApp');
+      if (global.io) {
+        global.io.emit('connected', true);
       }
+    }
+  });
 
-      if (connection === 'open') {
-        console.log(`✅ Bot conectado a WhatsApp para sesión ${sessionId}`);
-        botStatus = 'connected';
-        currentQr = null;
-        qrAttempts = 0;
-        reconnectAttempts = 0;
-        reconnectDelay = 3000;
-      }
-    });
+  // Guardar credenciales
+  sock.ev.on('creds.update', saveCreds);
 
-    sock.ev.on('creds.update', currentSaveCreds);
+  // Manejo de errores para que no explote el proceso
+  sock.ev.on('error', (err) => {
+    console.error('Error en Baileys:', err.message || err);
+  });
 
-    sock.ev.on('messages.upsert', async ({ messages }) => {
-      const mensaje = messages?.[0];
-      if (!mensaje?.message || mensaje.key.fromMe) return;
-
-      const texto =
-        mensaje.message.conversation ||
-        mensaje.message.extendedTextMessage?.text ||
-        '';
-
-      if (!texto.startsWith('!')) return;
-
-      const comando = texto.split(' ')[0].toLowerCase();
-      const numero = mensaje.key.remoteJid;
-      const esGrupo = numero.endsWith('@g.us');
-      const remitente = esGrupo ? mensaje.key.participant : numero;
-
-      // console.log(`📨 Comando: ${comando} | De: ${remitente} (${esGrupo ? 'grupo' : 'contacto'})`);
-
-      const ejecutar = comandos[comando];
-
-      if (ejecutar) {
-        try {
-          await ejecutar(sock, numero, texto, remitente);
-        } catch (err) {
-          console.error(`❌ Error ejecutando "${comando}":`, err);
-          await sock.sendMessage(numero, {
-            text: '🚨 Error al ejecutar el comando. Revisá la sintaxis o intentá más tarde.'
-          });
-        }
-      } else {
-        await sock.sendMessage(numero, {
-          text: '❓ Comando no reconocido. Usá `!menu` para ver las opciones disponibles.'
-        });
-      }
-    });
-  };
-
-  if (currentState?.creds?.me) {
-    console.log(`✅ Sesión existente detectada en DB para ${sessionId}. Conectando automáticamente...`);
-    conectar();
-  } else {
-    console.log(`📴 No hay sesión activa válida en DB para ${sessionId}. Esperando solicitud para iniciar conexión.`);
-  }
+  // Opcional: evento cuando se pierde conexión temporal
+  sock.ev.on('connecting', () => {
+    console.log('⏳ Conectando a WhatsApp...');
+  });
 }
 
-// Función para iniciar conexión manualmente
-const startConnection = async () => {
-  await init();
-  qrAttempts = 0;
-  conectar();
-};
+// Iniciamos el bot
+startBot().catch((err) => {
+  console.error('Error al iniciar el bot:', err);
+  process.exit(1);
+});
 
-// Exportamos directamente
-module.exports = { 
-  getBotStatus: () => botStatus, 
-  getCurrentQr: () => currentQr, 
-  getSockGlobal: () => sockGlobal,
-  startConnection
-};
+module.exports = { startBot };
