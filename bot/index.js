@@ -63,7 +63,8 @@ async function init() {
   currentState = state;
   currentSaveCreds = saveCreds;
 
-  const { version } = await fetchLatestBaileysVersion();
+  const { version: waVersion } = await fetchLatestBaileysVersion();
+console.log('Versión de WhatsApp detectada:', waVersion);
 
   conectar = () => {
     if (!currentState) {
@@ -76,7 +77,7 @@ async function init() {
       auth: currentState,
       logger: pino({ level: 'silent' }),
       printQRInTerminal: false,
-      browser: ['Bot Mantis', 'Chrome', '10.0'],
+      browser: ['Consultoría Mantis', 'Chrome', '130.0.6723.69'],
       connectTimeoutMs: 60_000,
   defaultQueryTimeoutMs: 60_000,
   keepAliveIntervalMs: 20_000,
